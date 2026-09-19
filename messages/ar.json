@@ -1,0 +1,28 @@
+{
+  "Brand": {
+    "name": "ProPack Custom",
+    "tagline": "تعبئة وطباعة مخصصة مع توصيل عالمي"
+  },
+  "Nav": {
+    "products": "المنتجات",
+    "quote": "طلب عرض سعر",
+    "about": "من نحن",
+    "login": "تسجيل الدخول",
+    "account": "حسابي"
+  },
+  "Home": {
+    "heroTitle": "تعبئة مخصّصة تروّج لعلامتك",
+    "heroSubtitle": "صناديق، ملصقات، كتيبات والمزيد. أسعار المصنع وشحن عالمي.",
+    "cta": "ابدأ العرض",
+    "secondaryCta": "تصفّح المنتجات"
+  },
+  "Auth": {
+    "continueWithGoogle": "المتابعة باستخدام Google",
+    "continueWithApple": "المتابعة باستخدام Apple",
+    "emailPlaceholder": "you@company.com",
+    "sendMagicLink": "إرسال رابط الدخول"
+  },
+  "Footer": {
+    "rights": "جميع الحقوق محفوظة."
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "Brand": {
+    "name": "ProPack Custom",
+    "tagline": "Custom Packaging & Printing, Delivered Worldwide"
+  },
+  "Nav": {
+    "products": "Products",
+    "quote": "Get a Quote",
+    "about": "About",
+    "login": "Sign In",
+    "account": "My Account"
+  },
+  "Home": {
+    "heroTitle": "Custom Packaging that Sells Your Brand",
+    "heroSubtitle": "Boxes, labels, brochures & more. Factory-direct pricing, global shipping.",
+    "cta": "Start a Quote",
+    "secondaryCta": "Browse Products"
+  },
+  "Auth": {
+    "continueWithGoogle": "Continue with Google",
+    "continueWithApple": "Continue with Apple",
+    "emailPlaceholder": "you@company.com",
+    "sendMagicLink": "Send magic link"
+  },
+  "Footer": {
+    "rights": "All rights reserved."
+  }
+}

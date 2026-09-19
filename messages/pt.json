@@ -1,0 +1,28 @@
+{
+  "Brand": {
+    "name": "ProPack Custom",
+    "tagline": "Embalagens e impressão personalizadas, entrega mundial"
+  },
+  "Nav": {
+    "products": "Produtos",
+    "quote": "Pedir orçamento",
+    "about": "Sobre",
+    "login": "Entrar",
+    "account": "Minha conta"
+  },
+  "Home": {
+    "heroTitle": "Embalagens personalizadas que vendem sua marca",
+    "heroSubtitle": "Caixas, rótulos, brochuras e mais. Preço de fábrica, envio global.",
+    "cta": "Solicitar orçamento",
+    "secondaryCta": "Ver produtos"
+  },
+  "Auth": {
+    "continueWithGoogle": "Continuar com Google",
+    "continueWithApple": "Continuar com Apple",
+    "emailPlaceholder": "voce@empresa.com",
+    "sendMagicLink": "Enviar link mágico"
+  },
+  "Footer": {
+    "rights": "Todos os direitos reservados."
+  }
+}

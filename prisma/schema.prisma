@@ -1,0 +1,208 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ── Auth.js 用户与多提供商账号 ─────────────────
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  locale        String    @default("en") // 界面语言
+  currency      String    @default("USD") // 偏好币种
+  country       String?
+  role          Role      @default(CUSTOMER)
+  createdAt     DateTime  @default(now())
+  accounts      Account[]
+  sessions      Session[]
+  orders        Order[]
+  addresses     Address[]
+  artworks      Artwork[]
+  quotes        Quote[]
+}
+
+enum Role {
+  CUSTOMER
+  WHOLESALE // 批发 / B2B
+  ADMIN
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String // oauth / email
+  provider          String // google / apple / wechat / qq / resend
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  scope             String?
+  id_token          String? @db.Text
+  token_type        String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ── 商品目录 ────────────────────────────────
+model Category {
+  id       String     @id @default(cuid())
+  slug     String     @unique
+  name     Json // 多语言 { "en": "...", "zh": "..." }
+  parentId String?
+  parent   Category?  @relation("cat", fields: [parentId], references: [id])
+  children Category[] @relation("cat")
+  products Product[]
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+  name        Json // 多语言
+  description Json // 多语言
+  images      String[]
+  basePrice   Decimal  @db.Decimal(10, 2)
+  currency    String   @default("USD")
+  specs       Spec[] // 材质/尺寸/工艺等可选项
+  quotes      Quote[]
+  orderItems  OrderItem[]
+  active      Boolean  @default(true)
+}
+
+model Spec {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      Json // "Material" / "Size"
+  options   Json // ["Kraft","Corrugated",...] 含加价
+}
+
+// ── 报价 / RFQ（印刷跨境核心：先询价后下单）────
+model Quote {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  productId   String
+  product     Product     @relation(fields: [productId], references: [id])
+  quantity    Int
+  detail      Json // 所选规格快照
+  artworkId   String?
+  status      QuoteStatus @default(PENDING)
+  quotedPrice Decimal?    @db.Decimal(10, 2)
+  currency    String      @default("USD")
+  createdAt   DateTime    @default(now())
+}
+
+enum QuoteStatus {
+  PENDING
+  QUOTED
+  ACCEPTED
+  EXPIRED
+}
+
+// ── 素材文件（R2）──────────────────────────
+model Artwork {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  fileName  String
+  r2Key     String   @unique // R2 对象键
+  size      Int
+  mime      String
+  createdAt DateTime @default(now())
+}
+
+// ── 订单 ───────────────────────────────────
+model Order {
+  id          String      @id @default(cuid())
+  orderNo     String      @unique
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  status      OrderStatus @default(PENDING_PAYMENT)
+  currency    String      @default("USD")
+  subtotal    Decimal     @db.Decimal(10, 2)
+  shippingFee Decimal     @db.Decimal(10, 2) @default(0)
+  tax         Decimal     @db.Decimal(10, 2) @default(0)
+  total       Decimal     @db.Decimal(10, 2)
+  addressId   String
+  address     Address     @relation(fields: [addressId], references: [id])
+  items       OrderItem[]
+  payment     Payment?
+  trackingNo  String? // 国际物流单号
+  carrier     String? // DHL/FedEx/UPS
+  createdAt   DateTime    @default(now())
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  IN_PRODUCTION
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+  specs     Json
+}
+
+model Address {
+  id         String  @id @default(cuid())
+  userId     String
+  user       User    @relation(fields: [userId], references: [id])
+  country    String
+  province   String? // State
+  city       String?
+  line1      String
+  line2      String?
+  postalCode String
+  recipient  String
+  phone      String
+  isDefault  Boolean @default(false)
+  orders     Order[]
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  provider  String // stripe / paypal
+  intentId  String   @unique // Stripe PaymentIntent id
+  amount    Decimal  @db.Decimal(10, 2)
+  currency  String
+  status    String // succeeded / refunded
+  createdAt DateTime @default(now())
+}

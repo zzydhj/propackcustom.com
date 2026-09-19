@@ -1,0 +1,28 @@
+{
+  "Brand": {
+    "name": "ProPack Custom",
+    "tagline": "Individuelle Verpackungen & Druck, weltweiter Versand"
+  },
+  "Nav": {
+    "products": "Produkte",
+    "quote": "Angebot anfordern",
+    "about": "Über uns",
+    "login": "Anmelden",
+    "account": "Mein Konto"
+  },
+  "Home": {
+    "heroTitle": "Individuelle Verpackungen, die Ihre Marke verkaufen",
+    "heroSubtitle": "Boxen, Etiketten, Broschüren u.v.m. Fabrikdirekte Preise, weltweiter Versand.",
+    "cta": "Angebot starten",
+    "secondaryCta": "Produkte ansehen"
+  },
+  "Auth": {
+    "continueWithGoogle": "Mit Google fortfahren",
+    "continueWithApple": "Mit Apple fortfahren",
+    "emailPlaceholder": "sie@firma.com",
+    "sendMagicLink": "Magic Link senden"
+  },
+  "Footer": {
+    "rights": "Alle Rechte vorbehalten."
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "Brand": {
+    "name": "ProPack 定制包装",
+    "tagline": "定制包装与印刷，全球交付"
+  },
+  "Nav": {
+    "products": "产品中心",
+    "quote": "在线报价",
+    "about": "关于我们",
+    "login": "登录",
+    "account": "我的账户"
+  },
+  "Home": {
+    "heroTitle": "会卖货的定制包装",
+    "heroSubtitle": "包装盒、标签、画册等，工厂直供价，全球物流直达。",
+    "cta": "立即报价",
+    "secondaryCta": "浏览产品"
+  },
+  "Auth": {
+    "continueWithGoogle": "使用 Google 继续",
+    "continueWithApple": "使用 Apple 继续",
+    "emailPlaceholder": "you@company.com",
+    "sendMagicLink": "发送登录链接"
+  },
+  "Footer": {
+    "rights": "版权所有。"
+  }
+}
