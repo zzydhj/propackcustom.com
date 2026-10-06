@@ -3,6 +3,9 @@ import { notFound } from 'next/navigation';
 import { NextIntlClientProvider, hasLocale } from 'next-intl';
 import { getMessages, setRequestLocale } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
+import { Header } from '@/components/site/Header';
+import { Footer } from '@/components/site/Footer';
+import { SiteChrome } from '@/components/site/SiteChrome';
 import '../globals.css';
 
 export const metadata: Metadata = {
@@ -31,7 +34,9 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} dir={dir} suppressHydrationWarning>
       <body className="antialiased">
-        <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
+        <NextIntlClientProvider messages={messages}>
+          <SiteChrome header={<Header />} footer={<Footer />}>{children}</SiteChrome>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

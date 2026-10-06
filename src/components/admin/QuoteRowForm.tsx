@@ -1,0 +1,28 @@
+'use client';
+
+import { useTranslations } from 'next-intl';
+import { useActionState } from 'react';
+import { updateQuote } from '@/features/admin/actions';
+
+export function QuoteRowForm({ id, status, quotedPrice, currency }: { id: string; status: string; quotedPrice: string; currency: string }) {
+  const t = useTranslations('Admin');
+  const [state, formAction, pending] = useActionState<{ ok: boolean; error?: string } | null, FormData>(updateQuote, null);
+  const statuses = ['PENDING', 'QUOTED', 'ACCEPTED', 'EXPIRED'];
+
+  return (
+    <form action={formAction} className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="id" value={id} />
+      <select name="status" defaultValue={status} className="rounded-md border border-neutral-300 px-2 py-1 text-sm outline-none focus:border-neutral-900">
+        {statuses.map((s) => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
+      <input name="quotedPrice" type="number" step="0.01" min="0" defaultValue={quotedPrice} placeholder={t('price')} className="w-24 rounded-md border border-neutral-300 px-2 py-1 text-sm outline-none focus:border-neutral-900" />
+      <input name="currency" defaultValue={currency} className="w-16 rounded-md border border-neutral-300 px-2 py-1 text-sm uppercase outline-none focus:border-neutral-900" />
+      <button type="submit" disabled={pending} className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-60">
+        {pending ? '…' : t('save')}
+      </button>
+      {state?.ok && <span className="text-xs text-green-600">✓</span>}
+    </form>
+  );
+}

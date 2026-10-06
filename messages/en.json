@@ -4,25 +4,342 @@
     "tagline": "Custom Packaging & Printing, Delivered Worldwide"
   },
   "Nav": {
+    "home": "Home",
     "products": "Products",
     "quote": "Get a Quote",
     "about": "About",
+    "contact": "Contact",
     "login": "Sign In",
-    "account": "My Account"
+    "register": "Register",
+    "account": "My Account",
+    "signOut": "Sign out",
+    "searchPlaceholder": "Search boxes, labels, brochures..."
   },
-  "Home": {
-    "heroTitle": "Custom Packaging that Sells Your Brand",
-    "heroSubtitle": "Boxes, labels, brochures & more. Factory-direct pricing, global shipping.",
-    "cta": "Start a Quote",
-    "secondaryCta": "Browse Products"
+  "Announcement": {
+    "text": "Free worldwide shipping on first B2B order over $500 · Sample kits ship in 3 days",
+    "action": "Learn more"
   },
-  "Auth": {
-    "continueWithGoogle": "Continue with Google",
-    "continueWithApple": "Continue with Apple",
-    "emailPlaceholder": "you@company.com",
-    "sendMagicLink": "Send magic link"
+  "Hero": {
+    "eyebrow": "Factory-direct custom packaging",
+    "title": "Packaging that makes your brand impossible to ignore",
+    "subtitle": "Custom boxes, labels, brochures and stickers — engineered in the materials you choose, printed to retail standards, and shipped to over 100 countries.",
+    "cta": "Start a quote",
+    "secondary": "Browse products",
+    "trust": "Trusted by 4,000+ brands and resellers worldwide"
+  },
+  "Categories": {
+    "title": "Shop by product line",
+    "subtitle": "Every category is fully customizable in size, material and finish.",
+    "viewAll": "View all products",
+    "items": [
+      {
+        "name": "Mailer Boxes",
+        "desc": "Rigid & corrugated shipping boxes"
+      },
+      {
+        "name": "Product Boxes",
+        "desc": "Retail-ready custom cartons"
+      },
+      {
+        "name": "Stickers & Labels",
+        "desc": "Waterproof die-cut labels"
+      },
+      {
+        "name": "Brochures & Books",
+        "desc": "Catalogs, booklets, magazines"
+      },
+      {
+        "name": "Business Cards",
+        "desc": "Premium finishes & foils"
+      },
+      {
+        "name": "Bags & Pouches",
+        "desc": "Kraft, paper & poly mailers"
+      },
+      {
+        "name": "Display & POS",
+        "desc": "Countertop & retail displays"
+      },
+      {
+        "name": "Marketing Swag",
+        "desc": "Mugs, totes & apparel"
+      }
+    ]
+  },
+  "ValueProps": {
+    "title": "Why brands choose ProPack",
+    "items": [
+      {
+        "title": "Factory-direct pricing",
+        "desc": "No middlemen. Volume tiers that scale down as you grow."
+      },
+      {
+        "title": "Free digital proofing",
+        "desc": "See a print-ready mockup before you approve a single unit."
+      },
+      {
+        "title": "Global fulfillment",
+        "desc": "DHL, FedEx & UPS to 100+ countries with live tracking."
+      },
+      {
+        "title": "Eco materials",
+        "desc": "Recycled, FSC-certified and compostable options available."
+      }
+    ]
+  },
+  "Popular": {
+    "title": "Best sellers this season",
+    "subtitle": "The packaging our customers reorder most.",
+    "tabBrands": "For brands",
+    "tabWholesale": "For resellers",
+    "from": "from",
+    "rating": "rating",
+    "minOrder": "MOQ"
+  },
+  "Matrix": {
+    "title": "Explore the catalog",
+    "subtitle": "Pick a category to see specs, materials and instant pricing.",
+    "viewAll": "View all",
+    "getPrice": "Get price",
+    "newTag": "New"
+  },
+  "Stats": {
+    "title": "Printing at industrial scale, with boutique service",
+    "items": [
+      {
+        "value": "25",
+        "unit": "yrs",
+        "label": "In production since 2000"
+      },
+      {
+        "value": "120",
+        "unit": "k",
+        "label": "Orders shipped worldwide"
+      },
+      {
+        "value": "100",
+        "unit": "+",
+        "label": "Countries delivered to"
+      },
+      {
+        "value": "99.2",
+        "unit": "%",
+        "label": "On-time production rate"
+      }
+    ]
+  },
+  "Promise": {
+    "title": "Built for serious print buyers",
+    "tags": [
+      "Offset & digital",
+      "Die-cutting",
+      "Foil & emboss",
+      "Soft-touch lamination",
+      "Spot UV",
+      "Food-safe inks",
+      "Barcode ready",
+      "Kitting & assembly",
+      "Warehousing",
+      "Dropship",
+      "FSC certified",
+      "Dedicated manager"
+    ]
+  },
+  "CTA": {
+    "title": "Get an instant quote in 2 minutes",
+    "subtitle": "Tell us the product, quantity and material — we'll return factory-direct pricing.",
+    "button": "Start my quote",
+    "talkToUs": "Talk to a specialist"
   },
   "Footer": {
-    "rights": "All rights reserved."
+    "guarantees": [
+      {
+        "title": "Quality checked",
+        "desc": "Every batch inspected before dispatch"
+      },
+      {
+        "title": "Secure payment",
+        "desc": "Stripe-protected, all major cards"
+      },
+      {
+        "title": "Fast turnaround",
+        "desc": "Standard runs in 7–12 days"
+      },
+      {
+        "title": "Here to help",
+        "desc": "Multilingual support team"
+      }
+    ],
+    "columns": [
+      {
+        "title": "Products",
+        "links": [
+          "Mailer Boxes",
+          "Stickers & Labels",
+          "Brochures",
+          "Business Cards"
+        ]
+      },
+      {
+        "title": "Company",
+        "links": [
+          "About us",
+          "Sustainability",
+          "Careers",
+          "Contact"
+        ]
+      },
+      {
+        "title": "Support",
+        "links": [
+          "Order status",
+          "Shipping & returns",
+          "Artwork guide",
+          "FAQ"
+        ]
+      },
+      {
+        "title": "Legal",
+        "links": [
+          "Privacy policy",
+          "Terms of service",
+          "Cookie settings"
+        ]
+      }
+    ],
+    "hotline": "Sales hotline",
+    "hours": "Mon–Sat, 9:00–19:00 (GMT+8)",
+    "rights": "All rights reserved.",
+    "follow": "Follow us"
+  },
+  "Common": {
+    "backToTop": "Back to top",
+    "contactUs": "Contact us",
+    "language": "Language"
+  },
+  "QuoteForm": {
+    "eyebrow": "Request for quote",
+    "title": "Get your factory-direct quote",
+    "subtitle": "Tell us what you need. A packaging specialist replies with pricing within one business day.",
+    "product": "Product line",
+    "productPlaceholder": "e.g. Mailer box, sticker sheet",
+    "quantity": "Quantity",
+    "material": "Material",
+    "materialPlaceholder": "e.g. 350g kraft, corrugated E-flute",
+    "size": "Size",
+    "sizePlaceholder": "e.g. 30 × 20 × 10 cm",
+    "country": "Ship-to country",
+    "countryPlaceholder": "e.g. United States",
+    "contact": "Contact name",
+    "contactPlaceholder": "Your name",
+    "email": "Work email",
+    "notes": "Project details",
+    "notesPlaceholder": "Printing, finishes, deadline, artwork status...",
+    "submit": "Request quote",
+    "submitting": "Submitting...",
+    "successTitle": "Quote request received",
+    "successBody": "Thanks! We'll email you pricing within one business day."
+  },
+  "Account": {
+    "overview": "Overview",
+    "quotes": "My quotes",
+    "orders": "My orders",
+    "addresses": "Addresses",
+    "welcome": "Welcome back",
+    "noQuotes": "You have no quote requests yet.",
+    "noOrders": "You have no orders yet.",
+    "noAddresses": "You haven't saved any addresses.",
+    "colProduct": "Product",
+    "colQty": "Quantity",
+    "colStatus": "Status",
+    "colPrice": "Price",
+    "colDate": "Date",
+    "itemsCount": "{count} item(s)",
+    "default": "Default",
+    "wallet": "Wallet",
+    "balance": "Current balance",
+    "activity": "Fees & activity",
+    "noTransactions": "No transactions yet.",
+    "colType": "Type",
+    "colAmount": "Amount",
+    "colBalance": "Balance",
+    "colNote": "Note",
+    "typeTOPUP": "Top-up",
+    "typeCHARGE": "Charge",
+    "typeREFUND": "Refund",
+    "typeADJUSTMENT": "Adjustment"
+  },
+  "Admin": {
+    "title": "管理后台",
+    "dashboard": "仪表盘",
+    "quotes": "报价",
+    "orders": "订单",
+    "products": "商品",
+    "pendingQuotes": "待处理报价",
+    "noQuotes": "暂无报价申请。",
+    "noOrders": "暂无订单。",
+    "price": "价格",
+    "save": "保存",
+    "qty": "数量",
+    "carrier": "承运商",
+    "tracking": "物流单号",
+    "addProduct": "新增商品",
+    "add": "添加",
+    "delete": "删除",
+    "colName": "名称",
+    "colPrice": "价格",
+    "errNoCategory": "请先创建一个分类。",
+    "errInvalid": "请检查表单填写。",
+    "wallet": "钱包",
+    "categories": "分类",
+    "customers": "客户",
+    "colEmail": "邮箱",
+    "colBalance": "余额",
+    "adjust": "调整余额",
+    "type": "类型",
+    "amount": "金额",
+    "note": "备注",
+    "apply": "确定",
+    "noCustomers": "暂无客户。",
+    "topupHint": "充值与退款为增加额度；扣款为减少额度；调整可为负数。",
+    "addCategory": "新增分类",
+    "colSlug": "标识(slug)",
+    "deleteCategory": "删除",
+    "noCategories": "暂无分类。",
+    "edit": "编辑",
+    "fields": "字段 / 规格",
+    "productEditor": "商品编辑器",
+    "colCategory": "所属分类",
+    "active": "已上架",
+    "inactive": "已下架",
+    "images": "图片链接（每行一个）",
+    "description": "描述",
+    "saveProduct": "保存商品",
+    "addSpec": "添加字段",
+    "specName": "字段名称",
+    "specOptions": "选项（选项名 | 加价，每行一个）",
+    "deleteSpec": "移除",
+    "noSpecs": "该商品暂无字段。",
+    "saved": "已保存",
+    "typeTOPUP": "充值",
+    "typeCHARGE": "扣款",
+    "typeREFUND": "退款",
+    "typeADJUSTMENT": "调整"
+  },
+  "Auth": {
+    "title": "Sign in to your account",
+    "subtitle": "Fast checkout, order tracking and saved quotes.",
+    "continueWithGoogle": "Continue with Google",
+    "continueWithApple": "Continue with Apple",
+    "divider": "or",
+    "emailPlaceholder": "you@company.com",
+    "sendMagicLink": "Send link",
+    "checkInbox": "Check your inbox — we sent a sign-in link.",
+    "invalidEmail": "Please enter a valid email address.",
+    "sendFailed": "Couldn't send the email right now. Try another sign-in method.",
+    "noAccount": "New here?",
+    "haveAccount": "Already have an account?",
+    "register": "Create account",
+    "signIn": "Sign in"
   }
 }
