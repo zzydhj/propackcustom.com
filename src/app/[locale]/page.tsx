@@ -26,7 +26,7 @@ async function Home({ params }: { params: Promise<{ locale: string }> }) {
 
 function Section({ id, className = '', children }: { id?: string; className?: string; children: React.ReactNode }) {
   return (
-    <section id={id} className={`mx-auto max-w-[1266px] px-5 2xl:px-12 ${className}`}>
+    <section id={id} className={`mx-auto max-w-[1440px] px-5 2xl:px-12 ${className}`}>
       {children}
     </section>
   );
@@ -200,9 +200,8 @@ function Matrix() {
               <li key={c.name}>
                 <Link
                   href="/products"
-                  className={`flex items-center justify-between rounded-lg px-4 py-3 text-sm font-medium transition hover:bg-[#ffec5a] ${
-                    i === 0 ? 'bg-neutral-900 text-white hover:bg-neutral-900' : 'text-neutral-700'
-                  }`}
+                  className={`flex items-center justify-between rounded-lg px-4 py-3 text-sm font-medium transition hover:bg-[#ffec5a] ${i === 0 ? 'bg-neutral-900 text-white hover:bg-neutral-900' : 'text-neutral-700'
+                    }`}
                 >
                   {c.name}
                   <span aria-hidden>→</span>
@@ -270,13 +269,12 @@ function Promise() {
         {tags.map((tag, i) => (
           <span
             key={tag}
-            className={`rounded-full border px-4 py-2 text-sm font-medium ${
-              i % 4 === 0
-                ? 'border-neutral-900 bg-neutral-900 text-white'
-                : i % 3 === 0
-                  ? 'border-[#ffec5a] bg-[#ffec5a] text-neutral-900'
-                  : 'border-neutral-200 bg-white text-neutral-700'
-            }`}
+            className={`rounded-full border px-4 py-2 text-sm font-medium ${i % 4 === 0
+              ? 'border-neutral-900 bg-neutral-900 text-white'
+              : i % 3 === 0
+                ? 'border-[#ffec5a] bg-[#ffec5a] text-neutral-900'
+                : 'border-neutral-200 bg-white text-neutral-700'
+              }`}
           >
             {tag}
           </span>

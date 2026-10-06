@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
 import { updateProduct, upsertSpec, deleteSpec } from '@/features/admin/actions';
 import { ProductConfiguratorBuilder } from './ProductConfiguratorBuilder';
-import type { ProductAttribute, QuantityTier } from '@/lib/pricing';
+import type { ProductConfig } from '@/lib/config-engine';
 
 export type SpecOption = { value: string; adder: number };
 export type SpecRow = { id: string; name: string; options: SpecOption[] };
@@ -71,14 +71,6 @@ function SpecAddForm({ productId }: { productId: string }) {
         </form>
     );
 }
-
-export type ProductConfig = {
-    pricingMode: 'FIXED' | 'AREA';
-    basePrice: number;
-    pricePerSqm: number | null;
-    attributes: ProductAttribute[];
-    quantityTiers: QuantityTier[];
-};
 
 export function ProductEditor({ product, categories, specs, config }: { product: ProductRow; categories: CategoryOption[]; specs: SpecRow[]; config: ProductConfig }) {
     const t = useTranslations('Admin');

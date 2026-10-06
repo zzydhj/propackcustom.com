@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireUser } from '@/lib/guards';
-import { parsePricingProduct, computePrice, validateSelections, round2, type Selections } from '@/lib/pricing';
+import { mapProductConfig, computeConfigState, validateConfig, computeConfigPrice, round2, type Selections } from '@/lib/config-engine';
 
 function genOrderNo(): string {
     return `PP${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 1e4).toString().padStart(4, '0')}`;
@@ -51,24 +51,44 @@ export async function createProductOrder(_prev: CheckoutState | null, formData: 
         return { ok: false, errors: ['Invalid configuration.'] };
     }
 
-    const product = await prisma.product.findUnique({ where: { id: parsed.data.productId } });
+    const product = await prisma.product.findUnique({
+        where: { id: parsed.data.productId },
+        include: {
+            attributeGroups: { orderBy: { sort: 'asc' }, include: { options: { orderBy: { sort: 'asc' } } } },
+            dependencyRules: true,
+        },
+    });
     if (!product || !product.active) return { ok: false, errors: ['Product unavailable.'] };
 
-    const pricing = parsePricingProduct({
+    const config = mapProductConfig({
         pricingMode: product.pricingMode,
-        basePrice: Number(product.basePrice),
-        pricePerSqm: product.pricePerSqm == null ? null : Number(product.pricePerSqm),
-        attributes: product.attributes,
-        quantityTiers: product.quantityTiers,
+        basePrice: product.basePrice,
+        pricePerSqm: product.pricePerSqm,
         currency: product.currency,
+        quantityTiers: product.quantityTiers,
+        attributeGroups: product.attributeGroups,
+        dependencyRules: product.dependencyRules,
     });
 
-    const fieldErrors = validateSelections(pricing.attributes, selections);
+    // 服务端用规则引擎重算：裁剪非法/失效选项 + 应用强制勾选（绝不信任前端提交）
+    const st = computeConfigState(config, selections, []);
+    selections = st.selections;
+
+    const fieldErrors = validateConfig(config, selections);
     if (fieldErrors.length) return { ok: false, errors: fieldErrors };
 
-    const price = computePrice(pricing, selections, parsed.data.quantity);
+    const price = computeConfigPrice(config, selections, parsed.data.quantity, st);
     const total = round2(price.total);
     if (total <= 0) return { ok: false, errors: ['Price must be greater than zero.'] };
+
+    // 只记录文件名/备注（真实文件走 R2/S3 预签名上传，另议）
+    const artwork = ((formData.get('artwork') as string) || '').trim();
+    const orderNote = ((formData.get('note') as string) || '').trim();
+    const specs = {
+        ...(selections as Record<string, unknown>),
+        ...(artwork ? { _artwork: artwork } : {}),
+        ...(orderNote ? { _note: orderNote } : {}),
+    };
 
     const d = parsed.data;
     const order = await prisma.$transaction(async (tx) => {
@@ -90,7 +110,7 @@ export async function createProductOrder(_prev: CheckoutState | null, formData: 
                 orderNo: genOrderNo(),
                 userId,
                 status: 'PENDING_PAYMENT',
-                currency: pricing.currency,
+                currency: config.currency,
                 subtotal: total,
                 total,
                 addressId: address.id,
@@ -99,7 +119,7 @@ export async function createProductOrder(_prev: CheckoutState | null, formData: 
                         productId: product.id,
                         quantity: d.quantity,
                         unitPrice: round2(price.finalUnit),
-                        specs: selections as never,
+                        specs: specs as never,
                     },
                 },
             },

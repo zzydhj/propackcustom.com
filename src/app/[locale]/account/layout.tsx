@@ -9,7 +9,7 @@ export default async function AccountLayout({
 }) {
   const session = await requireUser();
   return (
-    <div className="mx-auto grid max-w-[1266px] gap-8 px-5 py-10 2xl:px-12 md:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="mx-auto grid max-w-[1440px] gap-8 px-5 py-10 2xl:px-12 md:grid-cols-[220px_minmax(0,1fr)]">
       <AccountSidebar email={session.user.email ?? ''} />
       <div className="min-w-0">{children}</div>
     </div>

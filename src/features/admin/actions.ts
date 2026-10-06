@@ -267,15 +267,19 @@ export async function adjustBalance(_prev: { ok: boolean; error?: string } | nul
   return { ok: true };
 }
 
-// ── 产品配置器：定价模式 / 尺寸单价 / 字段 / 数量阶梯 ──
+// ── 产品配置器：定价 + 数量阶梯 + 归一化 组/选项/联动规则（全量替换）──
 const productConfigSchema = z.object({
   id: z.string().min(1),
   pricingMode: z.enum(['FIXED', 'AREA']),
   basePrice: z.coerce.number().nonnegative(),
   pricePerSqm: z.union([z.coerce.number().nonnegative(), z.literal('')]).optional(),
-  attributesJson: z.string(),
   tiersJson: z.string(),
+  configJson: z.string(),
 });
+
+type InOption = { id: string; name: string; sort?: number; defaultState?: string; isDefaultChecked?: boolean; priceAdjustType?: string; priceAdjust?: number; parentOptionId?: string | null };
+type InGroup = { id: string; name: string; selectType?: string; displayType?: string; unit?: string | null; isRequired?: boolean; sort?: number; min?: number | null; max?: number | null; parentOptionId?: string | null; options?: InOption[] };
+type InRule = { sourceOptionId: string; targetGroupId: string; allowedOptionIds?: string[]; disabledOptionIds?: string[]; hiddenOptionIds?: string[]; forcedCheckedOptionId?: string | null; priority?: number };
 
 export async function saveProductConfig(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
   await requireAdmin();
@@ -284,31 +288,94 @@ export async function saveProductConfig(_prev: { ok: boolean; error?: string } |
     pricingMode: formData.get('pricingMode'),
     basePrice: formData.get('basePrice'),
     pricePerSqm: (formData.get('pricePerSqm') as string) || '',
-    attributesJson: (formData.get('attributes') as string) || '[]',
     tiersJson: (formData.get('quantityTiers') as string) || '[]',
+    configJson: (formData.get('config') as string) || '{"groups":[],"rules":[]}',
   });
   if (!parsed.success) return { ok: false, error: 'invalid' };
   const d = parsed.data;
-  let attributes: unknown;
-  let quantityTiers: unknown;
+  let tiers: unknown;
+  let cfg: { groups: InGroup[]; rules: InRule[] };
   try {
-    attributes = JSON.parse(d.attributesJson);
-    quantityTiers = JSON.parse(d.tiersJson);
+    tiers = JSON.parse(d.tiersJson);
+    cfg = JSON.parse(d.configJson);
   } catch {
     return { ok: false, error: 'invalid' };
   }
-  if (!Array.isArray(attributes) || !Array.isArray(quantityTiers)) return { ok: false, error: 'invalid' };
+  if (!Array.isArray(tiers) || !cfg || !Array.isArray(cfg.groups) || !Array.isArray(cfg.rules)) return { ok: false, error: 'invalid' };
 
-  await prisma.product.update({
-    where: { id: d.id },
-    data: {
-      pricingMode: d.pricingMode,
-      basePrice: d.basePrice,
-      pricePerSqm: d.pricePerSqm === '' ? null : (d.pricePerSqm as number),
-      attributes: attributes as never,
-      quantityTiers: quantityTiers as never,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.product.update({
+      where: { id: d.id },
+      data: {
+        pricingMode: d.pricingMode,
+        basePrice: d.basePrice,
+        pricePerSqm: d.pricePerSqm === '' ? null : (d.pricePerSqm as number),
+        quantityTiers: tiers as never,
+      },
+    });
+    // 全量替换：先清规则再清组（组级联删选项）
+    await tx.dependencyRule.deleteMany({ where: { productId: d.id } });
+    await tx.attributeGroup.deleteMany({ where: { productId: d.id } });
+
+    const groupIdMap = new Map<string, string>();
+    const optionIdMap = new Map<string, string>();
+    for (const g of cfg.groups) {
+      const created = await tx.attributeGroup.create({
+        data: {
+          productId: d.id,
+          name: g.name || 'Option',
+          selectType: g.selectType || 'single',
+          displayType: g.displayType || 'button',
+          unit: g.unit ?? null,
+          isRequired: !!g.isRequired,
+          sort: g.sort ?? 0,
+          min: g.min ?? null,
+          max: g.max ?? null,
+        },
+      });
+      groupIdMap.set(g.id, created.id);
+      for (const o of g.options ?? []) {
+        const oc = await tx.attributeOption.create({
+          data: {
+            groupId: created.id,
+            name: o.name || '',
+            sort: o.sort ?? 0,
+            defaultState: o.defaultState || 'enabled',
+            isDefaultChecked: !!o.isDefaultChecked,
+            priceAdjustType: o.priceAdjustType === 'PERCENT' ? 'PERCENT' : 'FIXED',
+            priceAdjust: Number(o.priceAdjust) || 0,
+          },
+        });
+        optionIdMap.set(o.id, oc.id);
+      }
+    }
+    // 组的结构父选项（映射到新 id）
+    for (const g of cfg.groups) {
+      const gid = groupIdMap.get(g.id);
+      if (gid && g.parentOptionId && optionIdMap.has(g.parentOptionId)) {
+        await tx.attributeGroup.update({ where: { id: gid }, data: { parentOptionId: optionIdMap.get(g.parentOptionId)! } });
+      }
+    }
+    // 联动规则
+    for (const r of cfg.rules) {
+      const src = optionIdMap.get(r.sourceOptionId);
+      const tgt = groupIdMap.get(r.targetGroupId);
+      if (!src || !tgt) continue;
+      await tx.dependencyRule.create({
+        data: {
+          productId: d.id,
+          sourceOptionId: src,
+          targetGroupId: tgt,
+          allowedOptionIds: (r.allowedOptionIds ?? []).map((x) => optionIdMap.get(x) ?? x),
+          disabledOptionIds: (r.disabledOptionIds ?? []).map((x) => optionIdMap.get(x) ?? x),
+          hiddenOptionIds: (r.hiddenOptionIds ?? []).map((x) => optionIdMap.get(x) ?? x),
+          forcedCheckedOptionId: r.forcedCheckedOptionId ? (optionIdMap.get(r.forcedCheckedOptionId) ?? null) : null,
+          priority: r.priority ?? 0,
+        },
+      });
+    }
   });
+
   revalidatePath('/admin/products');
   revalidatePath('/products');
   return { ok: true };

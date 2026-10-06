@@ -84,7 +84,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                     <h1 className="text-lg font-bold text-neutral-900">{t('title')} · {NAV.find((n) => isActive(n.href))?.label ?? '仪表盘'}</h1>
                     <span className="text-sm text-neutral-500">中文</span>
                 </header>
-                <main className="mx-auto max-w-6xl p-8">{children}</main>
+                <main className="mx-auto max-w-[1440px] p-8">{children}</main>
             </div>
         </div>
     );

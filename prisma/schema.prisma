@@ -121,6 +121,8 @@ model Product {
   specs         Spec[] // 材质/尺寸/工艺等可选项（旧，保留）
   quotes        Quote[]
   orderItems    OrderItem[]
+  attributeGroups AttributeGroup[]
+  dependencyRules DependencyRule[]
   active        Boolean     @default(true)
 }
 
@@ -135,6 +137,59 @@ model Spec {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   name      Json // "Material" / "Size"
   options   Json // ["Kraft","Corrugated",...] 含加价
+}
+
+// ── 属性联动规则引擎（归一化三层）──────────
+model AttributeGroup {
+  id             String   @id @default(cuid())
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name           String
+  selectType     String   @default("single") // single|multi|number|text|dimension|file
+  displayType    String   @default("button") // button|radio|checkbox|dropdown
+  unit           String?
+  isRequired     Boolean  @default(false)
+  sort           Int      @default(0)
+  min            Float?
+  max            Float?
+  parentOptionId String? // 结构层：仅当该父选项被选中时渲染本组
+  options        AttributeOption[]
+  rulesTargeting DependencyRule[] @relation("TargetGroup")
+
+  @@index([productId])
+}
+
+model AttributeOption {
+  id               String   @id @default(cuid())
+  groupId          String
+  group            AttributeGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name             String
+  parentOptionId   String? // 结构层：选项级父子（预留）
+  defaultState     String   @default("enabled") // enabled|disabled|hidden
+  isDefaultChecked Boolean  @default(false)
+  sort             Int      @default(0)
+  priceAdjustType  String   @default("FIXED") // FIXED|PERCENT（计价层；独立 price_rule 表下一期）
+  priceAdjust      Decimal  @default(0) @db.Decimal(10, 2)
+  rulesAsSource    DependencyRule[] @relation("SourceOption")
+
+  @@index([groupId])
+}
+
+model DependencyRule {
+  id                    String   @id @default(cuid())
+  productId             String
+  product               Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sourceOptionId        String
+  sourceOption          AttributeOption @relation("SourceOption", fields: [sourceOptionId], references: [id], onDelete: Cascade)
+  targetGroupId         String
+  targetGroup           AttributeGroup @relation("TargetGroup", fields: [targetGroupId], references: [id], onDelete: Cascade)
+  allowedOptionIds      Json     @default("[]") // string[] 白名单（空=不限制）
+  disabledOptionIds     Json     @default("[]") // string[] 黑名单
+  hiddenOptionIds       Json     @default("[]") // string[] 隐藏
+  forcedCheckedOptionId String? // 自动勾选项
+  priority              Int      @default(0)
+
+  @@index([productId, sourceOptionId])
 }
 
 // ── 报价 / RFQ（印刷跨境核心：先询价后下单）────

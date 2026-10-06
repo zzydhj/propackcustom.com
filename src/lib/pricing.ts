@@ -6,9 +6,12 @@
 //   数量阶梯：命中 quantity >= tier.min 的最大档，按 discountPct 打折
 
 export type AdderType = 'FIXED' | 'PERCENT';
-export type AttrType = 'SELECT' | 'MULTI' | 'DIMENSION' | 'NUMBER' | 'TEXT';
+export type AttrType = 'SELECT' | 'DROPDOWN' | 'MULTI' | 'DIMENSION' | 'NUMBER' | 'TEXT';
 
-export type AttrOption = { id: string; label: string; adder: number; adderType: AdderType };
+// 依赖条件：引用的字段(attrId)当前所选值命中 values 任一即满足（OR）；多条之间为 AND
+export type AttrCondition = { attrId: string; values: string[] };
+
+export type AttrOption = { id: string; label: string; adder: number; adderType: AdderType; requires?: AttrCondition[] };
 
 export type ProductAttribute = {
     id: string;
@@ -19,6 +22,7 @@ export type ProductAttribute = {
     options?: AttrOption[];
     min?: number;
     max?: number;
+    requires?: AttrCondition[];
 };
 
 export type QuantityTier = { min: number; discountPct: number };
@@ -81,6 +85,57 @@ export function getDimension(attrs: ProductAttribute[], selections: Selections):
     return null;
 }
 
+// ── 依赖条件求值 ──
+export function condMet(cond: AttrCondition, attrs: ProductAttribute[], selections: Selections): boolean {
+    const target = attrs.find((a) => a.id === cond.attrId);
+    if (!target) return true; // 引用悬空 → 不拦截
+    const v = selections[cond.attrId];
+    const empty = v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
+    if (target.type === 'SELECT' || target.type === 'DROPDOWN' || target.type === 'MULTI') {
+        if (empty) return false;
+        if (Array.isArray(v)) return v.some((x) => cond.values.includes(String(x)));
+        return cond.values.includes(String(v));
+    }
+    // 数字/文本/尺寸作为条件时按「是否已填写」判断
+    return !empty;
+}
+
+export function isAttrEnabled(attr: ProductAttribute, attrs: ProductAttribute[], selections: Selections): boolean {
+    return (attr.requires ?? []).every((c) => condMet(c, attrs, selections));
+}
+
+export function isOptionEnabled(option: AttrOption, attrs: ProductAttribute[], selections: Selections): boolean {
+    return (option.requires ?? []).every((c) => condMet(c, attrs, selections));
+}
+
+// 级联清理：移除所有因依赖不满足而失效的选项/字段，反复迭代直到稳定
+export function pruneSelections(attrs: ProductAttribute[], selections: Selections): Selections {
+    const sel: Selections = { ...selections };
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const attr of attrs) {
+            const attrOn = isAttrEnabled(attr, attrs, sel);
+            if (attr.type === 'SELECT' || attr.type === 'DROPDOWN') {
+                const v = sel[attr.id];
+                if (typeof v === 'string' && v) {
+                    const ok = attrOn && (attr.options ?? []).some((o) => o.id === v && isOptionEnabled(o, attrs, sel));
+                    if (!ok) { delete sel[attr.id]; changed = true; }
+                }
+            } else if (attr.type === 'MULTI') {
+                const arr = sel[attr.id];
+                if (Array.isArray(arr) && arr.length) {
+                    const kept = attrOn ? arr.filter((id) => (attr.options ?? []).some((o) => o.id === id && isOptionEnabled(o, attrs, sel))) : [];
+                    if (kept.length !== arr.length) { sel[attr.id] = kept; changed = true; }
+                }
+            } else if (!attrOn && sel[attr.id] !== undefined) {
+                delete sel[attr.id]; changed = true;
+            }
+        }
+    }
+    return sel;
+}
+
 export function computePrice(product: PricingProduct, selections: Selections, quantity: number): PriceBreakdown {
     const { pricingMode, basePrice, pricePerSqm, attributes, quantityTiers, currency } = product;
 
@@ -97,9 +152,10 @@ export function computePrice(product: PricingProduct, selections: Selections, qu
     let fixedAdd = 0;
     let percentAdd = 0;
     for (const attr of attributes) {
-        if (attr.type === 'SELECT') {
+        if (!isAttrEnabled(attr, attributes, selections)) continue;
+        if (attr.type === 'SELECT' || attr.type === 'DROPDOWN') {
             const opt = attr.options?.find((o) => o.id === selections[attr.id]);
-            if (opt) {
+            if (opt && isOptionEnabled(opt, attributes, selections)) {
                 if (opt.adderType === 'PERCENT') percentAdd += opt.adder;
                 else fixedAdd += opt.adder;
             }
@@ -107,7 +163,7 @@ export function computePrice(product: PricingProduct, selections: Selections, qu
             const sels = (selections[attr.id] as string[]) ?? [];
             for (const id of sels) {
                 const opt = attr.options?.find((o) => o.id === id);
-                if (opt) {
+                if (opt && isOptionEnabled(opt, attributes, selections)) {
                     if (opt.adderType === 'PERCENT') percentAdd += opt.adder;
                     else fixedAdd += opt.adder;
                 }
@@ -144,6 +200,7 @@ export function computePrice(product: PricingProduct, selections: Selections, qu
 export function validateSelections(attrs: ProductAttribute[], selections: Selections): string[] {
     const errors: string[] = [];
     for (const attr of attrs) {
+        if (!isAttrEnabled(attr, attrs, selections)) continue;
         const v = selections[attr.id];
         if (attr.required) {
             if (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)) {

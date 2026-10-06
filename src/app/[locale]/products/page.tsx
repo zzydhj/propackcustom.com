@@ -25,7 +25,7 @@ async function List({ params }: { params: Promise<{ locale: string }> }) {
     }));
 
     return (
-        <main className="mx-auto max-w-[1266px] px-5 py-10 2xl:px-12">
+        <main className="mx-auto max-w-[1440px] px-5 py-10 2xl:px-12">
             <h1 className="mb-2 text-3xl font-black text-neutral-900">Products</h1>
             <p className="mb-8 text-neutral-500">Configure size, material and finishes — get an instant factory-direct price.</p>
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

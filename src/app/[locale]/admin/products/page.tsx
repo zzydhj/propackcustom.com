@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/guards';
 import { prisma } from '@/lib/prisma';
 import { ProductAdmin } from '@/components/admin/ProductAdmin';
 import { ProductEditor } from '@/components/admin/ProductEditor';
+import { mapProductConfig } from '@/lib/config-engine';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 export default function AdminProductsPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -15,7 +16,14 @@ async function Page({ params }: { params: Promise<{ locale: string }> }) {
   setRequestLocale(locale);
   await requireAdmin();
   const [products, categories] = await Promise.all([
-    prisma.product.findMany({ orderBy: { slug: 'asc' }, take: 200, include: { specs: true } }),
+    prisma.product.findMany({
+      orderBy: { slug: 'asc' }, take: 200,
+      include: {
+        specs: true,
+        attributeGroups: { orderBy: { sort: 'asc' }, include: { options: { orderBy: { sort: 'asc' } } } },
+        dependencyRules: true,
+      },
+    }),
     prisma.category.findMany({ orderBy: { slug: 'asc' } }),
   ]);
 
@@ -32,13 +40,15 @@ async function Page({ params }: { params: Promise<{ locale: string }> }) {
       active: p.active,
       images: p.images,
     },
-    config: {
-      pricingMode: p.pricingMode === 'AREA' ? ('AREA' as const) : ('FIXED' as const),
-      basePrice: Number(p.basePrice),
-      pricePerSqm: p.pricePerSqm == null ? null : Number(p.pricePerSqm),
-      attributes: Array.isArray(p.attributes) ? (p.attributes as any[]) : [],
-      quantityTiers: Array.isArray(p.quantityTiers) ? (p.quantityTiers as any[]) : [],
-    },
+    config: mapProductConfig({
+      pricingMode: p.pricingMode,
+      basePrice: p.basePrice,
+      pricePerSqm: p.pricePerSqm,
+      currency: p.currency,
+      quantityTiers: p.quantityTiers,
+      attributeGroups: p.attributeGroups,
+      dependencyRules: p.dependencyRules,
+    }),
     specs: p.specs.map((s) => ({
       id: s.id,
       name: String((s.name as any)?.en ?? ''),
