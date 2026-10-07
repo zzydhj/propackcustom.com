@@ -280,6 +280,7 @@ const productConfigSchema = z.object({
 type InOption = { id: string; name: string; sort?: number; defaultState?: string; isDefaultChecked?: boolean; priceAdjustType?: string; priceAdjust?: number; parentOptionId?: string | null };
 type InGroup = { id: string; name: string; selectType?: string; displayType?: string; unit?: string | null; isRequired?: boolean; sort?: number; min?: number | null; max?: number | null; parentOptionId?: string | null; options?: InOption[] };
 type InRule = { sourceOptionId: string; targetGroupId: string; allowedOptionIds?: string[]; disabledOptionIds?: string[]; hiddenOptionIds?: string[]; forcedCheckedOptionId?: string | null; priority?: number };
+type InPriceRule = { name?: string; optionId?: string | null; chargeType?: string; priceValue?: number; sort?: number };
 
 export async function saveProductConfig(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
   await requireAdmin();
@@ -294,7 +295,7 @@ export async function saveProductConfig(_prev: { ok: boolean; error?: string } |
   if (!parsed.success) return { ok: false, error: 'invalid' };
   const d = parsed.data;
   let tiers: unknown;
-  let cfg: { groups: InGroup[]; rules: InRule[] };
+  let cfg: { groups: InGroup[]; rules: InRule[]; priceRules?: InPriceRule[] };
   try {
     tiers = JSON.parse(d.tiersJson);
     cfg = JSON.parse(d.configJson);
@@ -313,8 +314,9 @@ export async function saveProductConfig(_prev: { ok: boolean; error?: string } |
         quantityTiers: tiers as never,
       },
     });
-    // 全量替换：先清规则再清组（组级联删选项）
+    // 全量替换：先清规则/计价规则，再清组（组级联删选项）
     await tx.dependencyRule.deleteMany({ where: { productId: d.id } });
+    await tx.priceRule.deleteMany({ where: { productId: d.id } });
     await tx.attributeGroup.deleteMany({ where: { productId: d.id } });
 
     const groupIdMap = new Map<string, string>();
@@ -349,11 +351,18 @@ export async function saveProductConfig(_prev: { ok: boolean; error?: string } |
         optionIdMap.set(o.id, oc.id);
       }
     }
-    // 组的结构父选项（映射到新 id）
+    // 组的结构父选项 + 选项级父子（映射到新 id）
     for (const g of cfg.groups) {
       const gid = groupIdMap.get(g.id);
       if (gid && g.parentOptionId && optionIdMap.has(g.parentOptionId)) {
         await tx.attributeGroup.update({ where: { id: gid }, data: { parentOptionId: optionIdMap.get(g.parentOptionId)! } });
+      }
+      for (const o of g.options ?? []) {
+        const oid = optionIdMap.get(o.id);
+        const pid = o.parentOptionId ? optionIdMap.get(o.parentOptionId) : null;
+        if (oid && pid && pid !== oid) {
+          await tx.attributeOption.update({ where: { id: oid }, data: { parentOptionId: pid } });
+        }
       }
     }
     // 联动规则
@@ -371,6 +380,20 @@ export async function saveProductConfig(_prev: { ok: boolean; error?: string } |
           hiddenOptionIds: (r.hiddenOptionIds ?? []).map((x) => optionIdMap.get(x) ?? x),
           forcedCheckedOptionId: r.forcedCheckedOptionId ? (optionIdMap.get(r.forcedCheckedOptionId) ?? null) : null,
           priority: r.priority ?? 0,
+        },
+      });
+    }
+    // 计价规则（附加费/一次性费用）：optionId 软引用映射到新选项 id
+    for (const pr of cfg.priceRules ?? []) {
+      const ct = pr.chargeType === 'PER_UNIT' || pr.chargeType === 'PER_AREA' || pr.chargeType === 'PERCENT' ? pr.chargeType : 'ONE_TIME';
+      await tx.priceRule.create({
+        data: {
+          productId: d.id,
+          name: pr.name || 'Surcharge',
+          optionId: pr.optionId ? (optionIdMap.get(pr.optionId) ?? null) : null,
+          chargeType: ct,
+          priceValue: Number(pr.priceValue) || 0,
+          sort: pr.sort ?? 0,
         },
       });
     }

@@ -30,8 +30,10 @@ const groups = [
   ] },
   { id: 'finishing', name: 'Surface Finishing', selectType: 'multi', displayType: 'checkbox', isRequired: false, sort: 4, options: [
     { id: 'f-varnish',   name: 'Gloss Varnish',    priceAdjust: 0.01 },
-    { id: 'f-lam-gloss', name: 'Gloss Lamination', priceAdjust: 0.02 },
-    { id: 'f-lam-matte', name: 'Matte Lamination', priceAdjust: 0.02 },
+    // 选项级父子树：勾选 Lamination 后才展开 亮膜/哑膜（结构层，不走规则）
+    { id: 'f-lam',       name: 'Lamination',       priceAdjust: 0 },
+    { id: 'f-lam-gloss', name: 'Gloss Lamination', priceAdjust: 0.02, parentOptionId: 'f-lam' },
+    { id: 'f-lam-matte', name: 'Matte Lamination', priceAdjust: 0.02, parentOptionId: 'f-lam' },
     { id: 'f-holo',      name: 'Holographic Film', priceAdjust: 0.05 },
     { id: 'f-uv',        name: 'UV-resistant Ink', priceAdjust: 0.02 },
   ] },
@@ -116,6 +118,14 @@ const quantityTiers = [
   { min: 5000, discountPct: 25 },
 ];
 
+// ── 计价规则（独立 price_rule）：一次性费用 / 按件 / 百分比附加（折扣后叠加）──
+const priceRules = [
+  { name: 'Die-cut setup fee',      optionId: 'cut-die',    chargeType: 'ONE_TIME', priceValue: 30,   sort: 0 },
+  { name: 'Offset plate fee',       optionId: 'pt-offset',  chargeType: 'ONE_TIME', priceValue: 50,   sort: 1 },
+  { name: 'Custom shape surcharge', optionId: 'ds-custom',  chargeType: 'PER_UNIT', priceValue: 0.01, sort: 2 },
+  { name: 'Frozen-grade handling',  optionId: 'mat-frozen', chargeType: 'PERCENT',  priceValue: 10,   sort: 3 },
+];
+
 async function main() {
   let cat = await prisma.category.findFirst({ where: { slug: 'labels-stickers' } });
   if (!cat) {
@@ -134,7 +144,6 @@ async function main() {
     pricingMode: 'FIXED',
     pricePerSqm: null,
     quantityTiers,
-    attributes: [], // 清空旧 JSON（已迁到关系表）
     active: true,
   };
 
@@ -145,8 +154,9 @@ async function main() {
   });
 
   await prisma.$transaction(async (tx) => {
-    // 全量替换：先清规则，再清组（组级联删选项；规则 FK 亦级联）
+    // 全量替换：先清规则/计价规则，再清组（组级联删选项；规则 FK 亦级联）
     await tx.dependencyRule.deleteMany({ where: { productId: product.id } });
+    await tx.priceRule.deleteMany({ where: { productId: product.id } });
     await tx.attributeGroup.deleteMany({ where: { productId: product.id } });
 
     // 组（createMany 减少往返，避免 Neon 远程事务超时）
@@ -175,6 +185,7 @@ async function main() {
           groupId: g.id,
           name: o.name,
           sort: oi,
+          parentOptionId: o.parentOptionId ?? null,
           defaultState: o.defaultState ?? 'enabled',
           isDefaultChecked: !!o.isDefaultChecked,
           priceAdjustType: o.priceAdjustType ?? 'FIXED',
@@ -197,9 +208,21 @@ async function main() {
         priority: r.priority ?? 0,
       })),
     });
+
+    // 计价规则（附加费/一次性费用）
+    await tx.priceRule.createMany({
+      data: priceRules.map((pr) => ({
+        productId: product.id,
+        name: pr.name,
+        optionId: pr.optionId ?? null,
+        chargeType: pr.chargeType,
+        priceValue: pr.priceValue,
+        sort: pr.sort,
+      })),
+    });
   }, { timeout: 30000 });
 
-  console.log(`Label Sticker ready → /products/label-sticker  (groups=${groups.length}, rules=${rules.length})`);
+  console.log(`Label Sticker ready → /products/label-sticker  (groups=${groups.length}, rules=${rules.length}, priceRules=${priceRules.length})`);
 }
 
 main()

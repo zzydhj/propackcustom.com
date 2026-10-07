@@ -5,7 +5,7 @@
 //   结构层  group.parentOptionId —— 仅当父选项被选中时渲染该组（模切→刀版/直角），不走规则
 //   规则层  DependencyRule：source 选项被选中 → 对 target 组施加
 //           allowed(白名单,交集) / disabled(黑名单,并集) / hidden(并集) / forced_checked(最小 priority 优先)
-//   计价层  option.priceAdjust(FIXED/PERCENT) + product.basePrice + quantityTiers（独立 price_rule 表下一期）
+//   计价层  option.priceAdjust(FIXED/PERCENT) + product.basePrice + quantityTiers + 独立 PriceRule(附加费/一次性费用)
 //
 // 核心原则：每次都用「全部已选」重算到不动点（非 if-else 链），任意顺序/回退都自洽；
 // 服务端下单前同样调用，绝不信任前端。
@@ -50,6 +50,17 @@ export type CfgRule = {
     priority: number;
 };
 
+// 计价层：独立于联动规则的「附加费/一次性费用」
+export type ChargeType = 'ONE_TIME' | 'PER_UNIT' | 'PER_AREA' | 'PERCENT';
+export type CfgPriceRule = {
+    id: string;
+    name: string;
+    optionId: string | null; // null=无条件（产品级）；否则仅当该选项被选中且可选时计费
+    chargeType: ChargeType;
+    priceValue: number;
+    sort: number;
+};
+
 export type QuantityTier = { min: number; discountPct: number };
 export type Dimension = { width: number; height: number };
 // 选择值：以 groupId 为键。single→optionId；multi→optionId[]；number→number；text/file→string；dimension→{width,height}
@@ -63,6 +74,7 @@ export type ProductConfig = {
     quantityTiers: QuantityTier[];
     groups: CfgGroup[];
     rules: CfgRule[];
+    priceRules: CfgPriceRule[];
 };
 
 export type OptionState = { hidden: boolean; disabled: boolean; forced: boolean; selectable: boolean };
@@ -74,6 +86,7 @@ export type ConfigState = {
     autoChecked: string[]; // 由 forced 自动加入的选项（条件消失时回收）
 };
 
+export type PriceRuleLine = { id: string; name: string; chargeType: ChargeType; amount: number };
 export type PriceBreakdown = {
     currency: string;
     unitBase: number;
@@ -83,7 +96,10 @@ export type PriceBreakdown = {
     discountPct: number;
     finalUnit: number;
     quantity: number;
-    total: number;
+    goodsTotal: number; // finalUnit × qty（不含附加费）
+    surcharges: PriceRuleLine[]; // 命中的计价规则明细
+    surchargeTotal: number;
+    total: number; // goodsTotal + surchargeTotal
     areaSqm: number;
 };
 
@@ -151,17 +167,20 @@ function pass(cfg: ProductConfig, selIn: Selections, prevAuto: Set<string>): Pas
         }
 
         let anySelectable = false;
+        let anyExpanded = false; // 至少有一个未被父选项折叠的选项
         for (const o of g.options) {
-            const hidden = structHidden || o.defaultState === 'hidden' || hiddenSet.has(o.id);
+            const parentHidden = !!o.parentOptionId && !selected.has(o.parentOptionId); // 结构层：父选项未选 → 折叠隐藏
+            const hidden = structHidden || parentHidden || o.defaultState === 'hidden' || hiddenSet.has(o.id);
             const notAllowed = allowed !== null && !allowed.has(o.id);
             const disabled = !hidden && (o.defaultState === 'disabled' || disabledSet.has(o.id) || notAllowed);
             const selectable = !hidden && !disabled;
             const isForced = selectable && forced === o.id;
             optionState[o.id] = { hidden, disabled, forced: isForced, selectable };
             if (selectable) anySelectable = true;
+            if (!parentHidden) anyExpanded = true;
         }
-        // 组：结构隐藏；或「有选项但无可选项」（allowed 交集空/全禁用）→ unavailable
-        groupState[g.id] = { hidden: structHidden, unavailable: !structHidden && g.options.length > 0 && !anySelectable };
+        // 组：结构隐藏；或「有展开选项但无可选项」（allowed 交集空/全禁用）→ unavailable
+        groupState[g.id] = { hidden: structHidden, unavailable: !structHidden && anyExpanded && !anySelectable };
         forcedByGroup[g.id] = forced && optionState[forced]?.selectable ? forced : null;
     }
 
@@ -310,10 +329,29 @@ export function computeConfigPrice(cfg: ProductConfig, selections: Selections, q
     for (const t of [...cfg.quantityTiers].sort((a, b) => a.min - b.min)) {
         if (quantity >= t.min) discountPct = t.discountPct;
     }
+    const qty = quantity || 0;
     const finalUnit = unitBeforeTier * (1 - discountPct / 100);
-    const total = finalUnit * (quantity || 0);
+    const goodsTotal = finalUnit * qty;
 
-    return { currency: cfg.currency, unitBase, fixedAdd, percentAdd, unitBeforeTier, discountPct, finalUnit, quantity: quantity || 0, total, areaSqm };
+    // 计价层（独立 PriceRule）：折扣后叠加的附加费。命中条件 = 无 optionId（产品级），或该选项已选且 selectable
+    const selected = selectedOptionIds(cfg.groups, sel);
+    const surcharges: PriceRuleLine[] = [];
+    let surchargeTotal = 0;
+    for (const pr of [...(cfg.priceRules ?? [])].sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))) {
+        if (pr.optionId && !(selected.has(pr.optionId) && st.optionState[pr.optionId]?.selectable)) continue;
+        let amount = 0;
+        if (pr.chargeType === 'ONE_TIME') amount = pr.priceValue;
+        else if (pr.chargeType === 'PER_UNIT') amount = pr.priceValue * qty;
+        else if (pr.chargeType === 'PER_AREA') amount = pr.priceValue * areaSqm * qty;
+        else if (pr.chargeType === 'PERCENT') amount = (goodsTotal * pr.priceValue) / 100;
+        amount = round2(amount);
+        surcharges.push({ id: pr.id, name: pr.name || 'Surcharge', chargeType: pr.chargeType, amount });
+        surchargeTotal += amount;
+    }
+    surchargeTotal = round2(surchargeTotal);
+    const total = round2(goodsTotal + surchargeTotal);
+
+    return { currency: cfg.currency, unitBase, fixedAdd, percentAdd, unitBeforeTier, discountPct, finalUnit, quantity: qty, goodsTotal: round2(goodsTotal), surcharges, surchargeTotal, total, areaSqm };
 }
 
 // 校验必填 + 尺寸/数字范围（跳过结构隐藏的组）；返回错误信息（空数组=通过）
@@ -350,6 +388,7 @@ export function validateConfig(cfg: ProductConfig, selections: Selections): stri
 type RawOption = { id: string; name: string; sort: number; parentOptionId: string | null; defaultState: string; isDefaultChecked: boolean; priceAdjustType: string; priceAdjust: unknown };
 type RawGroup = { id: string; name: string; selectType: string; displayType: string; unit: string | null; isRequired: boolean; sort: number; min: number | null; max: number | null; parentOptionId: string | null; options: RawOption[] };
 type RawRule = { id: string; sourceOptionId: string; targetGroupId: string; allowedOptionIds: unknown; disabledOptionIds: unknown; hiddenOptionIds: unknown; forcedCheckedOptionId: string | null; priority: number };
+type RawPriceRule = { id: string; name: string; optionId: string | null; chargeType: string; priceValue: unknown; sort: number };
 
 const asStrArr = (v: unknown): string[] => (Array.isArray(v) ? v.map((x) => String(x)) : []);
 
@@ -361,6 +400,7 @@ export function mapProductConfig(p: {
     quantityTiers: unknown;
     attributeGroups: RawGroup[];
     dependencyRules: RawRule[];
+    priceRules?: RawPriceRule[];
 }): ProductConfig {
     const groups: CfgGroup[] = (p.attributeGroups ?? [])
         .map((g) => ({
@@ -400,6 +440,17 @@ export function mapProductConfig(p: {
         priority: r.priority ?? 0,
     }));
 
+    const priceRules: CfgPriceRule[] = (p.priceRules ?? [])
+        .map((r) => ({
+            id: r.id,
+            name: r.name,
+            optionId: r.optionId ?? null,
+            chargeType: (r.chargeType as ChargeType) || 'ONE_TIME',
+            priceValue: Number(r.priceValue) || 0,
+            sort: r.sort ?? 0,
+        }))
+        .sort((a, b) => a.sort - b.sort);
+
     return {
         pricingMode: p.pricingMode === 'AREA' ? 'AREA' : 'FIXED',
         basePrice: Number(p.basePrice) || 0,
@@ -408,5 +459,6 @@ export function mapProductConfig(p: {
         quantityTiers: Array.isArray(p.quantityTiers) ? (p.quantityTiers as QuantityTier[]) : [],
         groups,
         rules,
+        priceRules,
     };
 }

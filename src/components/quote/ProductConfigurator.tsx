@@ -81,6 +81,31 @@ function whyDisabled(config: ProductConfig, cs: ConfigState, groupId: string, op
     return 'Not available for the current selection';
 }
 
+// 选项树布局：把同组内「父→子」选项排成深度优先顺序，并给出缩进层级
+function layoutOptions(g: CfgGroup): { opt: CfgOption; depth: number }[] {
+    const ids = new Set(g.options.map((o) => o.id));
+    const children = new Map<string, CfgOption[]>();
+    const roots: CfgOption[] = [];
+    for (const o of g.options) {
+        if (o.parentOptionId && ids.has(o.parentOptionId)) {
+            const arr = children.get(o.parentOptionId) ?? [];
+            arr.push(o);
+            children.set(o.parentOptionId, arr);
+        } else roots.push(o);
+    }
+    const out: { opt: CfgOption; depth: number }[] = [];
+    const seen = new Set<string>();
+    const walk = (o: CfgOption, depth: number) => {
+        if (seen.has(o.id)) return;
+        seen.add(o.id);
+        out.push({ opt: o, depth });
+        for (const c of children.get(o.id) ?? []) walk(c, depth + 1);
+    };
+    for (const r of roots) walk(r, 0);
+    for (const o of g.options) if (!seen.has(o.id)) { seen.add(o.id); out.push({ opt: o, depth: 0 }); }
+    return out;
+}
+
 export function ProductConfigurator({
     product,
     config,
@@ -119,15 +144,17 @@ export function ProductConfigurator({
     }
 
     const renderOptions = (g: CfgGroup) => {
-        const opts = g.options.filter((o) => !cs.optionState[o.id]?.hidden);
+        const laid = layoutOptions(g).filter((x) => !cs.optionState[x.opt.id]?.hidden);
+        const hasTree = laid.some((x) => x.depth > 0);
         if (g.selectType === 'single' && g.displayType === 'dropdown') {
             return (
                 <select className={`${input} max-w-xs`} value={(cs.selections[g.id] as string) ?? ''} onChange={(e) => setSel(g.id, e.target.value || undefined)}>
                     <option value="">Select…</option>
-                    {opts.map((o) => {
+                    {laid.map(({ opt: o, depth }) => {
                         const st = cs.optionState[o.id];
                         const add = o.priceAdjust ? ` (${adderText(o)})` : '';
-                        return <option key={o.id} value={o.id} disabled={!st?.selectable}>{o.name}{add}{!st?.selectable ? ' — unavailable' : ''}</option>;
+                        const prefix = depth > 0 ? '— '.repeat(depth) : '';
+                        return <option key={o.id} value={o.id} disabled={!st?.selectable}>{prefix}{o.name}{add}{!st?.selectable ? ' — unavailable' : ''}</option>;
                     })}
                 </select>
             );
@@ -135,8 +162,8 @@ export function ProductConfigurator({
         const multi = g.selectType === 'multi';
         const arr = (cs.selections[g.id] as string[]) ?? [];
         return (
-            <div className="flex flex-wrap gap-2">
-                {opts.map((o) => {
+            <div className={hasTree ? 'flex flex-col items-start gap-1.5' : 'flex flex-wrap gap-2'}>
+                {laid.map(({ opt: o, depth }) => {
                     const st = cs.optionState[o.id];
                     const on = multi ? arr.includes(o.id) : cs.selections[g.id] === o.id;
                     const locked = !!st?.forced;
@@ -145,6 +172,7 @@ export function ProductConfigurator({
                         <button
                             type="button"
                             key={o.id}
+                            style={hasTree ? { marginLeft: depth * 18 } : undefined}
                             aria-disabled={!st?.selectable || locked}
                             title={st?.selectable ? (locked ? 'Auto-selected and locked' : undefined) : whyDisabled(config, cs, g.id, o.id)}
                             onClick={() => {
@@ -154,6 +182,7 @@ export function ProductConfigurator({
                             }}
                             className={cls}
                         >
+                            {depth > 0 && <span className="mr-1 opacity-40">└</span>}
                             {multi && <span className={`mr-1.5 inline-block h-3 w-3 rounded-[3px] align-middle ${on ? 'bg-[#ffec5a]' : 'border border-current opacity-40'}`} />}
                             {o.name}
                             {o.priceAdjust ? <span className={`ml-1 text-xs ${on ? 'text-[#ffec5a]' : 'opacity-60'}`}>{adderText(o)}</span> : null}
@@ -247,6 +276,11 @@ export function ProductConfigurator({
                     {price.discountPct > 0 && (
                         <div className="mt-1 flex items-center justify-between text-sm text-[#ffec5a]"><span>Volume discount</span><span>−{price.discountPct}%</span></div>
                     )}
+                    {price.surcharges.filter((s) => s.amount !== 0).map((s) => (
+                        <div key={s.id} className="mt-1 flex items-center justify-between text-sm text-neutral-300">
+                            <span>{s.name}</span><span>+{config.currency} {round2(s.amount).toFixed(2)}</span>
+                        </div>
+                    ))}
                     <div className="mt-3 flex items-end justify-between border-t border-white/10 pt-3">
                         <span className="text-sm text-neutral-300">Estimated total</span>
                         <span className="text-3xl font-black text-[#ffec5a]">{config.currency} {round2(price.total).toFixed(2)}</span>

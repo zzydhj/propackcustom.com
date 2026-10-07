@@ -22,6 +22,7 @@ async function Page({ params }: { params: Promise<{ locale: string }> }) {
         specs: true,
         attributeGroups: { orderBy: { sort: 'asc' }, include: { options: { orderBy: { sort: 'asc' } } } },
         dependencyRules: true,
+        priceRules: true,
       },
     }),
     prisma.category.findMany({ orderBy: { slug: 'asc' } }),
@@ -48,6 +49,7 @@ async function Page({ params }: { params: Promise<{ locale: string }> }) {
       quantityTiers: p.quantityTiers,
       attributeGroups: p.attributeGroups,
       dependencyRules: p.dependencyRules,
+      priceRules: p.priceRules,
     }),
     specs: p.specs.map((s) => ({
       id: s.id,

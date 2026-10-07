@@ -56,6 +56,7 @@ export async function createProductOrder(_prev: CheckoutState | null, formData: 
         include: {
             attributeGroups: { orderBy: { sort: 'asc' }, include: { options: { orderBy: { sort: 'asc' } } } },
             dependencyRules: true,
+            priceRules: true,
         },
     });
     if (!product || !product.active) return { ok: false, errors: ['Product unavailable.'] };
@@ -68,6 +69,7 @@ export async function createProductOrder(_prev: CheckoutState | null, formData: 
         quantityTiers: product.quantityTiers,
         attributeGroups: product.attributeGroups,
         dependencyRules: product.dependencyRules,
+        priceRules: product.priceRules,
     });
 
     // 服务端用规则引擎重算：裁剪非法/失效选项 + 应用强制勾选（绝不信任前端提交）
@@ -88,6 +90,7 @@ export async function createProductOrder(_prev: CheckoutState | null, formData: 
         ...(selections as Record<string, unknown>),
         ...(artwork ? { _artwork: artwork } : {}),
         ...(orderNote ? { _note: orderNote } : {}),
+        ...(price.surcharges.length ? { _surcharges: price.surcharges } : {}),
     };
 
     const d = parsed.data;
@@ -111,7 +114,7 @@ export async function createProductOrder(_prev: CheckoutState | null, formData: 
                 userId,
                 status: 'PENDING_PAYMENT',
                 currency: config.currency,
-                subtotal: total,
+                subtotal: round2(price.goodsTotal),
                 total,
                 addressId: address.id,
                 items: {

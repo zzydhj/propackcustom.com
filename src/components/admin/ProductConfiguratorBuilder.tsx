@@ -19,10 +19,11 @@ type BRule = {
     allowedOptionIds: string[]; disabledOptionIds: string[]; hiddenOptionIds: string[];
     forcedCheckedOptionId?: string | null; priority: number;
 };
+type BPriceRule = { id: string; name: string; optionId: string | null; chargeType: 'ONE_TIME' | 'PER_UNIT' | 'PER_AREA' | 'PERCENT'; priceValue: number; sort: number };
 type Tier = { min: number; discountPct: number };
 type Initial = {
     pricingMode: 'FIXED' | 'AREA'; basePrice: number; pricePerSqm: number | null;
-    quantityTiers: Tier[]; groups: BGroup[]; rules: BRule[];
+    quantityTiers: Tier[]; groups: BGroup[]; rules: BRule[]; priceRules: BPriceRule[];
 };
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -61,6 +62,7 @@ export function ProductConfiguratorBuilder({ productId, initial }: { productId: 
     const [tiers, setTiers] = useState<Tier[]>(initial.quantityTiers ?? []);
     const [groups, setGroups] = useState<BGroup[]>(initial.groups ?? []);
     const [rules, setRules] = useState<BRule[]>(initial.rules ?? []);
+    const [priceRules, setPriceRules] = useState<BPriceRule[]>(initial.priceRules ?? []);
     const [sourceId, setSourceId] = useState<string>('');
     const [state, formAction, pending] = useActionState<{ ok: boolean; error?: string } | null, FormData>(saveProductConfig, null);
 
@@ -84,6 +86,7 @@ export function ProductConfiguratorBuilder({ productId, initial }: { productId: 
                 hiddenOptionIds: r.hiddenOptionIds.filter((x) => !optIds.has(x)),
                 forcedCheckedOptionId: r.forcedCheckedOptionId && optIds.has(r.forcedCheckedOptionId) ? null : r.forcedCheckedOptionId,
             })));
+        setPriceRules((p) => p.filter((pr) => !pr.optionId || !optIds.has(pr.optionId)));
     };
     const moveGroup = (i: number, dir: -1 | 1) => setGroups((p) => { const j = i + dir; if (j < 0 || j >= p.length) return p; const n = [...p];[n[i], n[j]] = [n[j], n[i]]; return n; });
     const patchOption = (i: number, j: number, patch: Partial<BOption>) => setGroups((p) => p.map((g, gi) => (gi === i ? { ...g, options: g.options.map((o, oj) => (oj === j ? { ...o, ...patch } : o)) } : g)));
@@ -100,6 +103,7 @@ export function ProductConfiguratorBuilder({ productId, initial }: { productId: 
                 hiddenOptionIds: r.hiddenOptionIds.filter((x) => x !== oid),
                 forcedCheckedOptionId: r.forcedCheckedOptionId === oid ? null : r.forcedCheckedOptionId,
             })));
+        setPriceRules((p) => p.filter((pr) => pr.optionId !== oid));
     };
     const moveOption = (i: number, j: number, dir: -1 | 1) => { const opts = groups[i].options; const k = j + dir; if (k < 0 || k >= opts.length) return; const n = [...opts];[n[j], n[k]] = [n[k], n[j]]; patchGroup(i, { options: n }); };
 
@@ -132,9 +136,15 @@ export function ProductConfiguratorBuilder({ productId, initial }: { productId: 
     const sourceGroup = groups.find((g) => g.options.some((o) => o.id === sourceId));
     const targetGroups = groups.filter((g) => g.id !== sourceGroup?.id && hasOpts(g));
 
+    // ── 计价规则（附加费/一次性费用）编辑 ──
+    const addPriceRule = () => setPriceRules((p) => [...p, { id: uid(), name: '', optionId: null, chargeType: 'ONE_TIME', priceValue: 0, sort: p.length }]);
+    const patchPriceRule = (i: number, patch: Partial<BPriceRule>) => setPriceRules((p) => p.map((x, xi) => (xi === i ? { ...x, ...patch } : x)));
+    const removePriceRule = (i: number) => setPriceRules((p) => p.filter((_, xi) => xi !== i));
+
     const configJson = JSON.stringify({
         groups: groups.map((g, gi) => ({ ...g, sort: gi, options: g.options.map((o, oi) => ({ ...o, sort: oi })) })),
         rules,
+        priceRules: priceRules.map((pr, i) => ({ ...pr, sort: i })),
     });
 
     return (
@@ -242,6 +252,12 @@ export function ProductConfiguratorBuilder({ productId, initial }: { productId: 
                                                 <option value="disabled">默认禁用</option>
                                                 <option value="hidden">默认隐藏</option>
                                             </select>
+                                            {g.options.length > 1 && (
+                                                <select className={input} title="父选项：仅当父选项被选中时才显示本项（选项级父子树）" value={o.parentOptionId ?? ''} onChange={(e) => patchOption(i, j, { parentOptionId: e.target.value || null })}>
+                                                    <option value="">（无父级）</option>
+                                                    {g.options.filter((x) => x.id !== o.id).map((x) => <option key={x.id} value={x.id}>↳ 父：{x.name || '(空)'}</option>)}
+                                                </select>
+                                            )}
                                             <label className="flex items-center gap-1 text-xs text-neutral-600"><input type="checkbox" className="h-4 w-4" checked={o.isDefaultChecked} onChange={(e) => patchOption(i, j, { isDefaultChecked: e.target.checked })} /> 默认勾选</label>
                                             <span className="ml-auto flex items-center gap-2">
                                                 <button type="button" className={ghost} onClick={() => moveOption(i, j, -1)}>↑</button>
@@ -329,6 +345,35 @@ export function ProductConfiguratorBuilder({ productId, initial }: { productId: 
                         </ul>
                     </div>
                 )}
+            </div>
+
+            {/* 计价规则（附加费 / 一次性费用） */}
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-neutral-900">计价规则（附加费 / 一次性费用）</p>
+                    <button type="button" className={ghost} onClick={addPriceRule}>+ 添加计价规则</button>
+                </div>
+                <p className="mb-2 text-xs text-neutral-400">在数量折扣之后叠加。选项自带的固定/百分比加价请在上方「属性组」里设置。</p>
+                {priceRules.length === 0 && <p className="text-xs text-neutral-500">暂无附加费。</p>}
+                <div className="space-y-2">
+                    {priceRules.map((pr, i) => (
+                        <div key={pr.id} className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                            <input placeholder="费用名称（如 刀版费）" className={`${input} w-40`} value={pr.name} onChange={(e) => patchPriceRule(i, { name: e.target.value })} />
+                            <select className={input} value={pr.optionId ?? ''} onChange={(e) => patchPriceRule(i, { optionId: e.target.value || null })}>
+                                <option value="">始终收取</option>
+                                {allOptions.map((o) => <option key={o.id} value={o.id}>选中「{o.groupName} · {o.name}」时</option>)}
+                            </select>
+                            <select className={input} value={pr.chargeType} onChange={(e) => patchPriceRule(i, { chargeType: e.target.value as BPriceRule['chargeType'] })}>
+                                <option value="ONE_TIME">一次性</option>
+                                <option value="PER_UNIT">× 数量</option>
+                                <option value="PER_AREA">× 面积 × 数量</option>
+                                <option value="PERCENT">% 货值</option>
+                            </select>
+                            <input type="number" step="0.01" min="0" placeholder="金额" className={`${input} w-24`} value={pr.priceValue} onChange={(e) => patchPriceRule(i, { priceValue: Number(e.target.value) || 0 })} />
+                            <button type="button" className={del} onClick={() => removePriceRule(i)}>移除</button>
+                        </div>
+                    ))}
+                </div>
             </div>
 
             <div className="flex items-center gap-2">

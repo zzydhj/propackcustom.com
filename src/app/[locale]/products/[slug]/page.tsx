@@ -61,6 +61,7 @@ async function Detail({ params }: { params: Promise<{ locale: string; slug: stri
             category: true,
             attributeGroups: { orderBy: { sort: 'asc' }, include: { options: { orderBy: { sort: 'asc' } } } },
             dependencyRules: true,
+            priceRules: true,
         },
     });
     if (!product || !product.active) notFound();
@@ -81,6 +82,7 @@ async function Detail({ params }: { params: Promise<{ locale: string; slug: stri
         quantityTiers: product.quantityTiers,
         attributeGroups: product.attributeGroups,
         dependencyRules: product.dependencyRules,
+        priceRules: product.priceRules,
     });
 
     const name = en(product.name) || product.slug;

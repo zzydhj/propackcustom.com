@@ -116,13 +116,13 @@ model Product {
   currency      String      @default("USD")
   pricingMode   PricingMode @default(FIXED) // FIXED=基础价+选项；AREA=按长×宽面积计价
   pricePerSqm   Decimal?    @db.Decimal(10, 2) // AREA 模式：每平方米单价
-  attributes    Json? // 配置器字段定义（类型/选项/加价）
   quantityTiers Json? // 数量阶梯 [{ min, discountPct }]
   specs         Spec[] // 材质/尺寸/工艺等可选项（旧，保留）
   quotes        Quote[]
   orderItems    OrderItem[]
   attributeGroups AttributeGroup[]
   dependencyRules DependencyRule[]
+  priceRules    PriceRule[] // 计价层：独立附加费/一次性费用规则
   active        Boolean     @default(true)
 }
 
@@ -173,6 +173,20 @@ model AttributeOption {
   rulesAsSource    DependencyRule[] @relation("SourceOption")
 
   @@index([groupId])
+}
+
+// ── 计价层：独立 price_rule（与「能不能选」的 DependencyRule 解耦）──
+model PriceRule {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name       String // 费用名称（如 刀版费 / 制版费）
+  optionId   String? // 软引用 AttributeOption.id；null=无条件（产品级），否则仅当该选项被选中且可选时计费
+  chargeType String   @default("ONE_TIME") // ONE_TIME 一次性 | PER_UNIT ×数量 | PER_AREA ×面积×数量 | PERCENT 货值百分比
+  priceValue Decimal  @default(0) @db.Decimal(10, 2)
+  sort       Int      @default(0)
+
+  @@index([productId])
 }
 
 model DependencyRule {
