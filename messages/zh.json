@@ -22,6 +22,14 @@
     "emailPlaceholder": "you@company.com",
     "sendMagicLink": "发送登录链接"
   },
+  "Account": {
+    "orders": "我的订单",
+    "noOrders": "暂无订单。",
+    "itemsCount": "{count} 件商品",
+    "viewOrder": "查看订单与付款",
+    "orderSubmittedHint": "我们正在为您核对价格 —— 现在无需付款。",
+    "insufficientBalance": "余额不足"
+  },
   "Footer": {
     "rights": "版权所有。"
   }

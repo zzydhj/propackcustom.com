@@ -1,0 +1,7 @@
+-- 人工对接流程新增的订单状态。
+-- 单独一个迁移：ALTER TYPE ADD VALUE 之后，新枚举值不能在同一事务内被使用，
+-- 因此 SET DEFAULT 'SUBMITTED' 放到下一个迁移里。
+
+ALTER TYPE "OrderStatus" ADD VALUE IF NOT EXISTS 'SUBMITTED';
+ALTER TYPE "OrderStatus" ADD VALUE IF NOT EXISTS 'AWAITING_PAYMENT';
+ALTER TYPE "OrderStatus" ADD VALUE IF NOT EXISTS 'EXPIRED';

@@ -3,18 +3,19 @@
 import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
 import { updateOrder } from '@/features/admin/actions';
+import { ORDER_STATUS_ZH } from '@/lib/orders';
 
 export function OrderRowForm({ id, status, trackingNo, carrier }: { id: string; status: string; trackingNo: string; carrier: string }) {
   const t = useTranslations('Admin');
   const [state, formAction, pending] = useActionState<{ ok: boolean; error?: string } | null, FormData>(updateOrder, null);
-  const statuses = ['PENDING_PAYMENT', 'PAID', 'IN_PRODUCTION', 'SHIPPED', 'COMPLETED', 'CANCELLED'];
+  const statuses = ['SUBMITTED', 'AWAITING_PAYMENT', 'PENDING_PAYMENT', 'PAID', 'IN_PRODUCTION', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'EXPIRED'];
 
   return (
     <form action={formAction} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="id" value={id} />
       <select name="status" defaultValue={status} className="rounded-md border border-neutral-300 px-2 py-1 text-sm outline-none focus:border-neutral-900">
         {statuses.map((s) => (
-          <option key={s} value={s}>{s}</option>
+          <option key={s} value={s}>{ORDER_STATUS_ZH[s] ?? s}</option>
         ))}
       </select>
       <input name="carrier" defaultValue={carrier} placeholder={t('carrier')} className="w-24 rounded-md border border-neutral-300 px-2 py-1 text-sm outline-none focus:border-neutral-900" />

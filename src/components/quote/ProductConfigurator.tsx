@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useActionState } from 'react';
 import { Link } from '@/navigation';
 import { createProductOrder, type CheckoutState } from '@/features/order/actions';
+import { R2FileUpload } from '@/components/ui/R2FileUpload';
 import {
     computeConfigState, computeConfigPrice, initialSelections, round2,
     type ProductConfig, type ConfigState, type Selections, type Dimension, type CfgGroup, type CfgOption,
@@ -111,15 +112,20 @@ export function ProductConfigurator({
     config,
     isLoggedIn,
     loginHref,
+    email,
 }: {
     product: { id: string; slug: string; name: string; description: string };
     config: ProductConfig;
     isLoggedIn: boolean;
     loginHref: string;
+    email?: string;
 }) {
     const [cs, setCs] = useState<ConfigState>(() => computeConfigState(config, initialSelections(config), []));
     const [quantity, setQuantity] = useState<number>(config.quantityTiers[0]?.min ?? 100);
     const [artwork, setArtwork] = useState('');
+    const [artworkId, setArtworkId] = useState('');
+    // R2 未配置 / 网络异常时降级为「只记文件名」，绝不因此卡住下单
+    const [uploadFallback, setUploadFallback] = useState(false);
     const [state, formAction, pending] = useActionState<CheckoutState | null, FormData>(createProductOrder, null);
 
     // 每次改动都用「全部已选」重算到不动点（级联 forced/prune，任意顺序都自洽）
@@ -133,12 +139,31 @@ export function ProductConfigurator({
         return [...mins].filter((m) => m > 0).sort((a, b) => a - b).slice(0, 8);
     }, [config.quantityTiers, quantity]);
 
+    // 提交成功：强调「不用现在付款」，并给出免登录追踪链接（viewToken 即凭证）
     if (state?.ok && state.orderNo) {
         return (
             <div className="rounded-2xl border border-green-200 bg-green-50 p-6">
-                <p className="text-lg font-bold text-green-800">Order placed 🎉</p>
-                <p className="mt-1 text-sm text-green-700">Order #{state.orderNo} is pending payment. Pay it from your balance in My Account.</p>
-                <Link href="/account/orders" className="mt-4 inline-block rounded-md bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">Go to my orders</Link>
+                <p className="text-lg font-bold text-green-800">Order submitted 🎉</p>
+                <p className="mt-2 text-sm leading-relaxed text-green-700">
+                    Order <strong>#{state.orderNo}</strong> is with our team.
+                    <strong> No payment is needed right now.</strong> A packaging specialist checks feasibility, artwork and
+                    freight, then emails your confirmed price with a payment link — usually within one business day.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                    {state.viewToken && (
+                        <Link href={`/order/${state.viewToken}`} className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">
+                            Track this order
+                        </Link>
+                    )}
+                    {isLoggedIn && (
+                        <Link href="/account/orders" className="rounded-md border border-green-300 bg-white px-4 py-2 text-sm font-semibold text-green-800">
+                            Go to my orders
+                        </Link>
+                    )}
+                </div>
+                <p className="mt-3 text-xs text-green-700">
+                    Bookmark this page or keep the confirmation email — the tracking link works without signing in.
+                </p>
             </div>
         );
     }
@@ -244,6 +269,7 @@ export function ProductConfigurator({
             <input type="hidden" name="quantity" value={quantity} />
             <input type="hidden" name="selections" value={JSON.stringify(cs.selections)} />
             <input type="hidden" name="artwork" value={artwork} />
+            <input type="hidden" name="artworkId" value={artworkId} />
 
             {/* 1. 规格配置 */}
             <Sec id="configuration" title="Configuration">
@@ -288,9 +314,17 @@ export function ProductConfigurator({
                 </div>
             </Sec>
 
-            {/* 3. 交货信息 */}
-            <Sec id="delivery" title="Delivery Information">
+            {/* 3. 联系方式与交货信息 */}
+            <Sec id="delivery" title="Contact & Delivery">
                 <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        defaultValue={email ?? ''}
+                        placeholder={isLoggedIn ? 'Email — your confirmation is sent here' : 'Email * — we send your confirmed price here'}
+                        className={`${input} sm:col-span-2`}
+                    />
                     <input name="recipient" placeholder="Recipient *" className={input} />
                     <input name="phone" placeholder="Phone *" className={input} />
                     <input name="country" placeholder="Country *" className={input} />
@@ -300,20 +334,45 @@ export function ProductConfigurator({
                     <input name="line1" placeholder="Address line 1 *" className={`${input} sm:col-span-2`} />
                     <input name="line2" placeholder="Address line 2" className={`${input} sm:col-span-2`} />
                 </div>
+                {!isLoggedIn && (
+                    <p className="mt-3 text-xs leading-relaxed text-neutral-500">
+                        No account needed. We&rsquo;ll email a secure link to track this order and pay later —{' '}
+                        <Link href={loginHref} className="font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2">sign in</Link>{' '}
+                        if you already have one.
+                    </p>
+                )}
             </Sec>
 
-            {/* 4. 上传文件 */}
+            {/* 4. 上传文件：浏览器直传 R2，不经过站点服务器（避开 4.5MB 请求体上限） */}
             <Sec id="upload" title="Upload Artwork" hint="optional">
                 <p className="mb-3 text-sm text-neutral-500">Send print-ready artwork — our team reviews every file before production.</p>
-                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 px-4 py-8 text-center transition hover:border-neutral-900">
-                    <input type="file" accept=".pdf,.ai,.psd,.png,.jpg,.jpeg,.svg,.cdr" className="hidden" onChange={(e) => setArtwork(e.target.files?.[0]?.name ?? '')} />
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" className="text-neutral-400" aria-hidden>
-                        <path d="M12 16V4m0 0 4 4m-4-4L8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                    </svg>
-                    <span className="text-sm font-medium text-neutral-700">{artwork ? artwork : 'Click to upload or drop your file'}</span>
-                    <span className="text-xs text-neutral-400">PDF · AI · PSD · PNG · JPG · CDR · up to 1000MB</span>
-                </label>
+                {uploadFallback ? (
+                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                        <p className="text-sm text-neutral-600">
+                            Direct upload isn&rsquo;t available right now. Type your file name below and email the artwork to us
+                            after submitting — your order won&rsquo;t be held up.
+                        </p>
+                        <input
+                            type="text"
+                            value={artwork}
+                            onChange={(e) => setArtwork(e.target.value)}
+                            placeholder="e.g. label-artwork-v3.pdf"
+                            className={`${input} mt-2`}
+                        />
+                    </div>
+                ) : (
+                    <R2FileUpload
+                        kind="artwork"
+                        accept=".pdf,.ai,.psd,.png,.jpg,.jpeg,.svg,.cdr"
+                        label={artwork ? `${artwork} — click to replace` : 'Click to upload your file'}
+                        hint="PDF · AI · PSD · PNG · JPG · CDR"
+                        onUnavailable={() => setUploadFallback(true)}
+                        onUploaded={(f) => {
+                            setArtwork(f.fileName);
+                            setArtworkId(f.artworkId ?? '');
+                        }}
+                    />
+                )}
                 <textarea name="note" rows={2} placeholder="Order notes (optional) — e.g. PMS colors, special instructions" className={`${input} mt-3`} />
             </Sec>
 
@@ -323,18 +382,21 @@ export function ProductConfigurator({
                 </div>
             )}
 
-            {/* 5. 立即下单 */}
+            {/* 5. 提交订单：不收款、不登录，直接进入人工对接 */}
             <section id="place-order" className="scroll-mt-28">
-                <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-neutral-900"><span className="h-4 w-1.5 rounded bg-[#ffec5a]" />Place Order</h3>
-                {isLoggedIn ? (
-                    <button type="submit" disabled={pending} className="w-full rounded-xl bg-[#ffec5a] py-4 text-base font-black text-neutral-900 transition hover:brightness-95 disabled:opacity-60">
-                        {pending ? 'Placing order…' : `Place order · ${config.currency} ${round2(price.total).toFixed(2)}`}
-                    </button>
-                ) : (
-                    <div className="rounded-xl border border-neutral-200 bg-white p-4 text-center text-sm text-neutral-600">
-                        <Link href={loginHref} className="font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2">Sign in</Link> to place this order.
-                    </div>
-                )}
+                <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-neutral-900"><span className="h-4 w-1.5 rounded bg-[#ffec5a]" />Submit Your Order</h3>
+                <button type="submit" disabled={pending} className="w-full rounded-xl bg-[#ffec5a] py-4 text-base font-black text-neutral-900 transition hover:brightness-95 disabled:opacity-60">
+                    {pending ? 'Submitting…' : 'Submit order · No payment needed now'}
+                </button>
+                <p className="mt-3 text-center text-sm text-neutral-600">
+                    Estimated total <strong className="text-neutral-900">{config.currency} {round2(price.total).toFixed(2)}</strong>
+                    {' '}— we confirm feasibility &amp; freight, then email your payment link.
+                </p>
+                <ul className="mt-3 grid gap-1.5 text-xs text-neutral-500 sm:grid-cols-3">
+                    <li>✓ No payment required today</li>
+                    <li>✓ This price is held for 72 hours</li>
+                    <li>✓ Free artwork check before production</li>
+                </ul>
             </section>
         </form>
     );

@@ -4,6 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireAdmin } from '@/lib/guards';
+import { orderUrl, sendOrderConfirmed, sendOrderReceived, sendPaymentReceived } from '@/lib/email';
+import { createPaymentLink, stripeEnabled } from '@/lib/stripe';
+import { round2 } from '@/lib/config-engine';
+import { genOrderNo } from '@/lib/orders';
 
 const quoteSchema = z.object({
   id: z.string().min(1),
@@ -36,7 +40,7 @@ export async function updateQuote(_prev: { ok: boolean; error?: string } | null,
 
 const orderSchema = z.object({
   id: z.string().min(1),
-  status: z.enum(['PENDING_PAYMENT', 'PAID', 'IN_PRODUCTION', 'SHIPPED', 'COMPLETED', 'CANCELLED']),
+  status: z.enum(['SUBMITTED', 'AWAITING_PAYMENT', 'PENDING_PAYMENT', 'PAID', 'IN_PRODUCTION', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'EXPIRED']),
   trackingNo: z.string().optional(),
   carrier: z.string().optional(),
 });
@@ -51,12 +55,232 @@ export async function updateOrder(_prev: { ok: boolean; error?: string } | null,
   });
   if (!parsed.success) return { ok: false, error: 'invalid' };
   const d = parsed.data;
-  await prisma.order.update({
-    where: { id: d.id },
-    data: { status: d.status, trackingNo: d.trackingNo, carrier: d.carrier },
-  });
+  const data: Record<string, unknown> = { status: d.status, trackingNo: d.trackingNo, carrier: d.carrier };
+  // 推进到已付款时补上时间戳，便于统计回款周期
+  if (d.status === 'PAID') data.paidAt = new Date();
+  await prisma.order.update({ where: { id: d.id }, data });
   revalidatePath('/admin/orders');
   return { ok: true };
+}
+
+// ── 人工对接：确认价格并发出付款链接 ──────────────
+// 这是整条流程的关键动作：销售核对工艺/运费后改写 total（quotedTotal 保留原值供对比），
+// 选 Stripe Payment Link（需配置密钥）或站内订单页 + 银行转账，然后一键发邮件。
+const PAYMENT_WINDOW_DAYS = 7;
+
+const confirmSchema = z.object({
+  id: z.string().min(1),
+  total: z.coerce.number().positive(),
+  shippingFee: z.union([z.coerce.number().nonnegative(), z.literal('')]).optional(),
+  adjustReason: z.string().max(500).optional(),
+  paymentMethod: z.enum(['stripe_link', 'manual_tt']),
+});
+
+export type ConfirmState = { ok: boolean; error?: string; payUrl?: string; emailed?: boolean };
+
+export async function confirmOrder(_prev: ConfirmState | null, formData: FormData): Promise<ConfirmState> {
+  await requireAdmin();
+  const parsed = confirmSchema.safeParse({
+    id: formData.get('id'),
+    total: formData.get('total'),
+    shippingFee: (formData.get('shippingFee') as string) ?? '',
+    adjustReason: (formData.get('adjustReason') as string) || undefined,
+    paymentMethod: formData.get('paymentMethod') || 'manual_tt',
+  });
+  if (!parsed.success) return { ok: false, error: 'invalid' };
+  const d = parsed.data;
+  const sendEmail = formData.get('sendEmail') !== 'off';
+
+  const order = await prisma.order.findUnique({ where: { id: d.id }, include: { items: { include: { product: true } } } });
+  if (!order) return { ok: false, error: 'not-found' };
+
+  const total = round2(d.total);
+  const shippingFee = d.shippingFee === '' || d.shippingFee === undefined ? Number(order.shippingFee) : round2(d.shippingFee);
+  const productName = order.items[0]?.product ? en(order.items[0].product.name) : 'Custom order';
+  const quantity = order.items[0]?.quantity ?? 1;
+  const fallbackUrl = orderUrl(order.viewToken);
+
+  // Stripe 不可用或创建失败 → 自动降级为站内订单页（银行转账 / 凭证上传）
+  let method = d.paymentMethod;
+  let payUrl = fallbackUrl;
+  if (method === 'stripe_link') {
+    const link = stripeEnabled()
+      ? await createPaymentLink({ orderNo: order.orderNo, productName, quantity, currency: order.currency, amount: total, returnUrl: fallbackUrl })
+      : null;
+    if (link) payUrl = link.url;
+    else method = 'manual_tt';
+  }
+
+  const quotedTotal = order.quotedTotal != null ? Number(order.quotedTotal) : Number(order.total);
+  await prisma.order.update({
+    where: { id: order.id },
+    data: {
+      status: 'AWAITING_PAYMENT',
+      total,
+      shippingFee,
+      quotedTotal,
+      adjustReason: d.adjustReason || null,
+      paymentMethod: method,
+      payUrl,
+      confirmedAt: new Date(),
+      // 锁价期结束，改给一个付款窗口
+      expiresAt: new Date(Date.now() + PAYMENT_WINDOW_DAYS * 24 * 3600 * 1000),
+    },
+  });
+
+  let emailed = false;
+  if (sendEmail && order.email) {
+    emailed = await sendOrderConfirmed({
+      orderNo: order.orderNo,
+      viewToken: order.viewToken,
+      productName,
+      quantity,
+      currency: order.currency,
+      quotedTotal,
+      total,
+      shippingFee,
+      email: order.email,
+      contactName: order.contactName,
+      adjustReason: d.adjustReason || null,
+      payUrl,
+      paymentMethod: method,
+    });
+  }
+
+  revalidatePath('/admin/orders');
+  revalidatePath(`/order/${order.viewToken}`);
+  return { ok: true, payUrl, emailed };
+}
+
+// 人工确认到账（T/T 电汇对账、或 Stripe 后台已收款但未接 webhook）
+export async function markOrderPaid(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get('id') || '');
+  const provider = String(formData.get('provider') || 'manual_tt');
+  if (!id) return { ok: false, error: 'invalid' };
+
+  const order = await prisma.order.findUnique({ where: { id }, include: { items: { include: { product: true } } } });
+  if (!order) return { ok: false, error: 'not-found' };
+  if (order.status === 'PAID' || order.status === 'IN_PRODUCTION' || order.status === 'SHIPPED' || order.status === 'COMPLETED') {
+    return { ok: false, error: 'already-paid' };
+  }
+
+  const amount = Number(order.total);
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: order.id },
+      data: { status: 'PAID', paidAt: new Date(), paymentMethod: provider, payUrl: null },
+    });
+    await tx.payment.upsert({
+      where: { orderId: order.id },
+      create: { orderId: order.id, provider, intentId: `${provider.toUpperCase()}-${order.id}`, amount, currency: order.currency, status: 'succeeded' },
+      update: { provider, amount, currency: order.currency, status: 'succeeded' },
+    });
+  });
+
+  // 到账回执：让客户知道可以开工了
+  if (order.email) {
+    await sendPaymentReceived({
+      orderNo: order.orderNo,
+      viewToken: order.viewToken,
+      productName: order.items[0]?.product ? en(order.items[0].product.name) : 'Custom order',
+      quantity: order.items[0]?.quantity ?? 1,
+      currency: order.currency,
+      quotedTotal: order.quotedTotal != null ? Number(order.quotedTotal) : amount,
+      total: amount,
+      email: order.email,
+      contactName: order.contactName,
+    }).catch(() => false);
+  }
+
+  revalidatePath('/admin/orders');
+  revalidatePath(`/order/${order.viewToken}`);
+  return { ok: true };
+}
+
+// 重发确认函 / 收件函（邮件漏发或客户没收到时的补救）
+export async function resendOrderEmail(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get('id') || '');
+  const kind = String(formData.get('kind') || 'confirmed');
+  if (!id) return { ok: false, error: 'invalid' };
+
+  const order = await prisma.order.findUnique({ where: { id }, include: { items: { include: { product: true } } } });
+  if (!order || !order.email) return { ok: false, error: 'no-email' };
+
+  const data = {
+    orderNo: order.orderNo,
+    viewToken: order.viewToken,
+    productName: order.items[0]?.product ? en(order.items[0].product.name) : 'Custom order',
+    quantity: order.items[0]?.quantity ?? 1,
+    currency: order.currency,
+    quotedTotal: order.quotedTotal != null ? Number(order.quotedTotal) : Number(order.total),
+    total: Number(order.total),
+    shippingFee: Number(order.shippingFee),
+    email: order.email,
+    contactName: order.contactName,
+    expiresAt: order.expiresAt,
+    adjustReason: order.adjustReason,
+    payUrl: order.payUrl,
+    paymentMethod: order.paymentMethod,
+  };
+  const sent = kind === 'received' ? await sendOrderReceived(data) : await sendOrderConfirmed(data);
+  return sent ? { ok: true } : { ok: false, error: 'send-failed' };
+}
+
+// ── RFQ 报价 → 转订单：打通询价与订单两条孤岛 ─────────
+export async function convertQuoteToOrder(_prev: { ok: boolean; error?: string; orderNo?: string } | null, formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get('id') || '');
+  if (!id) return { ok: false, error: 'invalid' };
+
+  const quote = await prisma.quote.findUnique({ where: { id } });
+  if (!quote) return { ok: false, error: 'not-found' };
+  if (quote.orderId) return { ok: false, error: 'already-converted' };
+  const price = Number(quote.quotedPrice);
+  if (!price || price <= 0) return { ok: false, error: 'no-price' };
+
+  const quantity = quote.quantity > 0 ? quote.quantity : 1;
+  const unitPrice = round2(price / quantity);
+  const productName = quote.productName || (quote.productId ? 'Configured product' : 'Custom order');
+
+  const order = await prisma.$transaction(async (tx) => {
+    const created = await tx.order.create({
+      data: {
+        orderNo: genOrderNo(),
+        userId: quote.userId,
+        contactName: quote.contactName,
+        email: quote.email,
+        status: 'SUBMITTED',
+        currency: quote.currency,
+        subtotal: price,
+        total: price,
+        quotedTotal: price,
+        expiresAt: new Date(Date.now() + PAYMENT_WINDOW_DAYS * 24 * 3600 * 1000),
+        shipping: quote.detail ?? undefined,
+        artworkId: quote.artworkId,
+        // 询价转来的订单没有收货地址，销售确认后补录
+        items: quote.productId
+          ? { create: { productId: quote.productId, quantity, unitPrice, specs: { ...(quote.detail as object), _product: productName, _fromQuote: quote.id } as never } }
+          : undefined,
+      },
+    });
+    await tx.quote.update({ where: { id: quote.id }, data: { orderId: created.id, status: 'ACCEPTED' } });
+    return created;
+  });
+
+  revalidatePath('/admin/quotes');
+  revalidatePath('/admin/orders');
+  return { ok: true, orderNo: order.orderNo };
+}
+
+function en(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return String(o.en ?? Object.values(o)[0] ?? '');
+  }
+  return '';
 }
 
 const productSchema = z.object({

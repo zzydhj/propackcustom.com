@@ -225,6 +225,7 @@ model Quote {
   quotedPrice Decimal?    @db.Decimal(10, 2)
   currency    String      @default("USD")
   createdAt   DateTime    @default(now())
+  orderId     String? // 软引用 Order.id：报价确认后转订单，避免询价黑洞
 }
 
 enum QuoteStatus {
@@ -237,8 +238,8 @@ enum QuoteStatus {
 // ── 素材文件（R2）──────────────────────────
 model Artwork {
   id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  userId    String? // 匿名提交订单时也可上传素材
+  user      User?    @relation(fields: [userId], references: [id])
   fileName  String
   r2Key     String   @unique // R2 对象键
   size      Int
@@ -247,33 +248,54 @@ model Artwork {
 }
 
 // ── 订单 ───────────────────────────────────
+// 人工对接流程：SUBMITTED（客户提交，无需付款）→ 销售核对工艺/运费后改价
+// → AWAITING_PAYMENT（已发付款链接）→ PAID → IN_PRODUCTION → SHIPPED → COMPLETED
 model Order {
-  id          String      @id @default(cuid())
-  orderNo     String      @unique
-  userId      String
-  user        User        @relation(fields: [userId], references: [id])
-  status      OrderStatus @default(PENDING_PAYMENT)
-  currency    String      @default("USD")
-  subtotal    Decimal     @db.Decimal(10, 2)
-  shippingFee Decimal     @db.Decimal(10, 2) @default(0)
-  tax         Decimal     @db.Decimal(10, 2) @default(0)
-  total       Decimal     @db.Decimal(10, 2)
-  addressId   String
-  address     Address     @relation(fields: [addressId], references: [id])
-  items       OrderItem[]
-  payment     Payment?
-  trackingNo  String? // 国际物流单号
-  carrier     String? // DHL/FedEx/UPS
-  createdAt   DateTime    @default(now())
+  id            String      @id @default(cuid())
+  orderNo       String      @unique
+  viewToken     String      @unique @default(cuid()) // 免登录访问 /order/[token] 的凭证
+  userId        String? // 允许匿名提交（不注册也能下单，走人工对接）
+  user          User?       @relation(fields: [userId], references: [id])
+  contactName   String? // 匿名联系人
+  email         String? // 联系邮箱：确认函与付款链接发往此处
+  status        OrderStatus @default(SUBMITTED)
+  currency      String      @default("USD")
+  subtotal      Decimal     @db.Decimal(10, 2)
+  shippingFee   Decimal     @db.Decimal(10, 2) @default(0)
+  tax           Decimal     @db.Decimal(10, 2) @default(0)
+  total         Decimal     @db.Decimal(10, 2)
+  quotedTotal   Decimal?    @db.Decimal(10, 2) // 提交时配置器算出的总价（调价留痕基准）
+  adjustReason  String? // 人工调价说明（运费 / 刀版费 / 汇率…）
+  paymentMethod String? // stripe_link | manual_tt | wallet
+  payUrl        String? // 付款链接（Stripe Payment Link 或本站 /order/[token]）
+  proofFileName String? // 客户上传的付款凭证文件名
+  proofUrl      String? // 凭证访问地址（R2）
+  artworkId     String? // 软引用 Artwork.id
+  expiresAt     DateTime? // 报价有效期：SUBMITTED 超期未确认自动 EXPIRED
+  confirmedAt   DateTime? // 人工确认时间
+  paidAt        DateTime?
+  addressId     String? // 匿名订单不建 Address，改存 shipping 快照
+  address       Address?    @relation(fields: [addressId], references: [id])
+  shipping      Json? // 收货信息快照 { recipient, phone, country, ... }
+  items         OrderItem[]
+  payment       Payment?
+  trackingNo    String? // 国际物流单号
+  carrier       String? // DHL/FedEx/UPS
+  createdAt     DateTime    @default(now())
+
+  @@index([status, createdAt])
 }
 
 enum OrderStatus {
-  PENDING_PAYMENT
+  SUBMITTED // 已提交，待人工确认可行性与总价
+  AWAITING_PAYMENT // 已确认并发送付款链接，等待客户付款
+  PENDING_PAYMENT // 兼容旧数据：余额待扣款
   PAID
   IN_PRODUCTION
   SHIPPED
   COMPLETED
   CANCELLED
+  EXPIRED // 报价超期未确认
 }
 
 model OrderItem {

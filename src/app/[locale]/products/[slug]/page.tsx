@@ -27,9 +27,9 @@ function groupValue(g: CfgGroup): string {
 const TOC: TocItem[] = [
     { id: 'configuration', label: 'Configuration' },
     { id: 'pricing', label: 'Quantity & Pricing' },
-    { id: 'delivery', label: 'Delivery' },
+    { id: 'delivery', label: 'Contact & Delivery' },
     { id: 'upload', label: 'Upload Artwork' },
-    { id: 'place-order', label: 'Place Order' },
+    { id: 'place-order', label: 'Submit Order' },
     { id: 'specifications', label: 'Specifications' },
     { id: 'faq', label: 'FAQ' },
 ];
@@ -120,6 +120,7 @@ async function Detail({ params }: { params: Promise<{ locale: string; slug: stri
                             config={config}
                             isLoggedIn={isLoggedIn}
                             loginHref="/login"
+                            email={session?.user?.email ?? ''}
                         />
 
                         {/* Specifications */}
