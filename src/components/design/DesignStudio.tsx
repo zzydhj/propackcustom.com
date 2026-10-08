@@ -31,8 +31,7 @@ export function DesignStudio({
             <div>
                 <h2 className="text-lg font-bold text-neutral-900">Design Studio</h2>
                 <p className="text-sm text-neutral-500">
-                    Product type: <span className="font-mono">{productType}</span> · Fabric.js engine · M1 editing
-                    （text · image · move/scale/rotate · delete · undo/redo · import/export）
+                    Product type: <span className="font-mono">{productType}</span> — pick a template, edit text and artwork in your browser, then save and order.
                 </p>
             </div>
             <DesignCanvas productType={productType} widthMm={widthMm} heightMm={heightMm} initialScene={initialScene} designId={designId} templateId={templateId} name={name} />

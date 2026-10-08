@@ -61,10 +61,10 @@ export default function DesignCanvas({ productType, widthMm, heightMm, initialSc
         setSaving(false);
         if (res.ok && res.id) {
             setSavedId(res.id);
-            setMsg('已保存 ✓');
+            setMsg('Saved ✓');
             router.replace(`/design/${productType}?design=${res.id}`);
         } else {
-            setMsg(res.error === 'forbidden' ? '无权保存该作品' : '保存失败');
+            setMsg(res.error === 'forbidden' ? 'You cannot save this design' : 'Save failed');
         }
     }
 
