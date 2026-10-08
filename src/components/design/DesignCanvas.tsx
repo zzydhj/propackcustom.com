@@ -120,8 +120,8 @@ export default function DesignCanvas({ productType, widthMm, heightMm, initialSc
                 <button type="button" className={btn} onClick={downloadPNG}>Export PNG</button>
             </div>
 
-            <div className="overflow-auto rounded-2xl border border-neutral-200 bg-neutral-100 p-6">
-                <div className="relative mx-auto w-fit rounded bg-white shadow-md">
+            <div className="flex min-h-[calc(100vh-300px)] items-center justify-center overflow-auto rounded-2xl border border-neutral-200 bg-neutral-100 p-6">
+                <div className="relative w-fit rounded bg-white shadow-md">
                     <canvas ref={canvasElRef} />
                     {!ready && (
                         <div className="absolute inset-0 grid place-items-center text-sm text-neutral-400">Initializing canvas…</div>

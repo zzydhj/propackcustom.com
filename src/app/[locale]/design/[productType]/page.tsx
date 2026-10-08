@@ -19,7 +19,7 @@ export default async function DesignPage({ params, searchParams }: Props) {
     setRequestLocale(locale);
 
     const shell = (children: React.ReactNode) => (
-        <main className="mx-auto max-w-[1440px] px-5 py-8 2xl:px-12">{children}</main>
+        <main className="w-full px-3 py-5 sm:px-6">{children}</main>
     );
 
     // 1) 载入已有作品（最高优先）：可继续编辑并保存回同一条

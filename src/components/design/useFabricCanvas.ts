@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas, FabricImage, Textbox } from 'fabric';
 
-// 预览基准：1mm = 4px（≈100dpi 预览；导出成品另按 300dpi 走后端矢量链）
-export const PX_PER_MM = 4;
+// 预览基准：1mm = 8px（≈200dpi 预览，桌面画布显示更大；导出 PNG 用 multiplier 达 300dpi+，矢量 PDF 走后端链）
+export const PX_PER_MM = 8;
 
 type Opts = {
     widthMm?: number;
