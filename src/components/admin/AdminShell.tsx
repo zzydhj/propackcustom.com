@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 import { Link, usePathname } from '@/navigation';
 import { signOutAction } from '@/features/auth/actions';
 
-type IconName = 'dashboard' | 'quotes' | 'orders' | 'products' | 'categories' | 'wallet' | 'logout' | 'globe';
+type IconName = 'dashboard' | 'quotes' | 'orders' | 'products' | 'categories' | 'wallet' | 'logout' | 'globe' | 'templates' | 'blog' | 'videos';
 
 function Icon({ name }: { name: IconName }) {
     const paths: Record<IconName, React.ReactNode> = {
@@ -16,6 +16,9 @@ function Icon({ name }: { name: IconName }) {
         wallet: <><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4" /><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-3" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></>,
         logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></>,
         globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z" /></>,
+        templates: <><path d="m12 3 9 4.5-9 4.5L3 7.5 12 3Z" /><path d="m3 12 9 4.5 9-4.5" /><path d="m3 16.5 9 4.5 9-4.5" /></>,
+        blog: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
+        videos: <><path d="m9 8 6 4-6 4V8Z" /><rect x="3" y="5" width="18" height="14" rx="2" /></>,
     };
     return (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -31,6 +34,9 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
     { href: '/admin/products', label: '商品管理', icon: 'products' },
     { href: '/admin/categories', label: '分类管理', icon: 'categories' },
     { href: '/admin/wallet', label: '钱包管理', icon: 'wallet' },
+    { href: '/admin/templates', label: '模板管理', icon: 'templates' },
+    { href: '/admin/blog', label: '博客管理', icon: 'blog' },
+    { href: '/admin/videos', label: '视频管理', icon: 'videos' },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {

@@ -630,3 +630,215 @@ export async function saveProductConfig(_prev: { ok: boolean; error?: string } |
   revalidatePath('/products');
   return { ok: true };
 }
+
+// ── 内容管理：设计模板 / 博客 / 视频 ──────────────────
+// 三者都是「后台录入 → 前台展示 + 进 sitemap」的同一形态，用 upsert(id 有则改) + 独立 delete。
+const templateSchema = z.object({
+  id: z.string().optional(),
+  slug: z.string().min(2),
+  name: z.string().min(1),
+  productType: z.string().min(1),
+  category: z.string().optional(),
+  widthMm: z.coerce.number().positive(),
+  heightMm: z.coerce.number().positive(),
+  bleedMm: z.coerce.number().nonnegative(),
+  safeAreaMm: z.coerce.number().nonnegative(),
+  dielineSvg: z.string().optional(),
+  sceneJson: z.string().optional(),
+  active: z.boolean(),
+  sort: z.coerce.number().int(),
+});
+
+export async function saveTemplate(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
+  await requireAdmin();
+  const id = (formData.get('id') as string) || undefined;
+  const parsed = templateSchema.safeParse({
+    id,
+    slug: formData.get('slug'),
+    name: formData.get('name'),
+    productType: formData.get('productType'),
+    category: (formData.get('category') as string) || undefined,
+    widthMm: formData.get('widthMm'),
+    heightMm: formData.get('heightMm'),
+    bleedMm: (formData.get('bleedMm') as string) || '3',
+    safeAreaMm: (formData.get('safeAreaMm') as string) || '3',
+    dielineSvg: (formData.get('dielineSvg') as string) || undefined,
+    sceneJson: (formData.get('sceneJson') as string) || undefined,
+    active: formData.get('active') === 'on',
+    sort: (formData.get('sort') as string) || '0',
+  });
+  if (!parsed.success) return { ok: false, error: 'invalid' };
+  const d = parsed.data;
+  // sceneTemplate 允许贴 Fabric 导出的完整 JSON（含 version/objects），只保留 objects
+  let objects: unknown[] = [];
+  if (d.sceneJson && d.sceneJson.trim()) {
+    try {
+      const parsedScene = JSON.parse(d.sceneJson) as { objects?: unknown[] } | unknown[];
+      objects = Array.isArray(parsedScene) ? parsedScene : parsedScene.objects ?? [];
+    } catch {
+      return { ok: false, error: 'invalid-json' };
+    }
+  }
+  const data = {
+    slug: d.slug,
+    name: d.name,
+    productType: d.productType,
+    category: d.category ?? null,
+    widthMm: d.widthMm,
+    heightMm: d.heightMm,
+    bleedMm: d.bleedMm,
+    safeAreaMm: d.safeAreaMm,
+    dielineSvg: d.dielineSvg ?? null,
+    sceneTemplate: { version: '7.4.0', objects } as never,
+    active: d.active,
+    sort: d.sort,
+  };
+  if (id) await prisma.designTemplate.update({ where: { id }, data });
+  else await prisma.designTemplate.create({ data });
+  revalidatePath('/admin/templates');
+  revalidatePath('/design');
+  return { ok: true };
+}
+
+export async function deleteTemplate(formData: FormData) {
+  await requireAdmin();
+  const id = formData.get('id');
+  if (typeof id === 'string') await prisma.designTemplate.delete({ where: { id } }).catch(() => { });
+  revalidatePath('/admin/templates');
+  revalidatePath('/design');
+}
+
+const postSchema = z.object({
+  id: z.string().optional(),
+  slug: z.string().min(2),
+  title: z.string().min(1),
+  excerpt: z.string().optional(),
+  body: z.string().min(1),
+  coverImage: z.string().optional(),
+  tags: z.string().optional(),
+  author: z.string().optional(),
+  seoTitle: z.string().optional(),
+  seoDescription: z.string().optional(),
+  status: z.enum(['DRAFT', 'PUBLISHED']),
+  publishNow: z.boolean(),
+});
+
+export async function savePost(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
+  await requireAdmin();
+  const id = (formData.get('id') as string) || undefined;
+  const parsed = postSchema.safeParse({
+    id,
+    slug: formData.get('slug'),
+    title: formData.get('title'),
+    excerpt: (formData.get('excerpt') as string) || undefined,
+    body: formData.get('body'),
+    coverImage: (formData.get('coverImage') as string) || undefined,
+    tags: (formData.get('tags') as string) || '',
+    author: (formData.get('author') as string) || undefined,
+    seoTitle: (formData.get('seoTitle') as string) || undefined,
+    seoDescription: (formData.get('seoDescription') as string) || undefined,
+    status: formData.get('status') || 'DRAFT',
+    publishNow: formData.get('publishNow') === 'on',
+  });
+  if (!parsed.success) return { ok: false, error: 'invalid' };
+  const d = parsed.data;
+  const tags = d.tags ? d.tags.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  const data = {
+    slug: d.slug,
+    title: d.title,
+    excerpt: d.excerpt ?? null,
+    body: d.body,
+    coverImage: d.coverImage ?? null,
+    tags,
+    author: d.author ?? null,
+    seoTitle: d.seoTitle ?? null,
+    seoDescription: d.seoDescription ?? null,
+    status: d.status,
+    ...(d.status === 'PUBLISHED' ? { publishedAt: d.publishNow ? new Date() : undefined } : {}),
+  };
+  if (id) await prisma.post.update({ where: { id }, data });
+  else await prisma.post.create({ data });
+  revalidatePath('/admin/blog');
+  revalidatePath('/blog');
+  revalidatePath('/sitemap.xml');
+  return { ok: true };
+}
+
+export async function deletePost(formData: FormData) {
+  await requireAdmin();
+  const id = formData.get('id');
+  if (typeof id === 'string') await prisma.post.delete({ where: { id } }).catch(() => { });
+  revalidatePath('/admin/blog');
+  revalidatePath('/blog');
+  revalidatePath('/sitemap.xml');
+}
+
+const videoSchema = z.object({
+  id: z.string().optional(),
+  slug: z.string().min(2),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  provider: z.enum(['youtube', 'vimeo', 'self']),
+  embedId: z.string().optional(),
+  videoUrl: z.string().optional(),
+  coverImage: z.string().optional(),
+  durationSec: z.union([z.coerce.number().int().nonnegative(), z.literal('')]).optional(),
+  transcript: z.string().optional(),
+  seoTitle: z.string().optional(),
+  seoDescription: z.string().optional(),
+  status: z.enum(['DRAFT', 'PUBLISHED']),
+  publishNow: z.boolean(),
+});
+
+export async function saveVideo(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
+  await requireAdmin();
+  const id = (formData.get('id') as string) || undefined;
+  const parsed = videoSchema.safeParse({
+    id,
+    slug: formData.get('slug'),
+    title: formData.get('title'),
+    description: (formData.get('description') as string) || undefined,
+    provider: formData.get('provider') || 'youtube',
+    embedId: (formData.get('embedId') as string) || undefined,
+    videoUrl: (formData.get('videoUrl') as string) || undefined,
+    coverImage: (formData.get('coverImage') as string) || undefined,
+    durationSec: (formData.get('durationSec') as string) || '',
+    transcript: (formData.get('transcript') as string) || undefined,
+    seoTitle: (formData.get('seoTitle') as string) || undefined,
+    seoDescription: (formData.get('seoDescription') as string) || undefined,
+    status: formData.get('status') || 'DRAFT',
+    publishNow: formData.get('publishNow') === 'on',
+  });
+  if (!parsed.success) return { ok: false, error: 'invalid' };
+  const d = parsed.data;
+  const data = {
+    slug: d.slug,
+    title: d.title,
+    description: d.description ?? null,
+    provider: d.provider,
+    embedId: d.embedId ?? null,
+    videoUrl: d.videoUrl ?? null,
+    coverImage: d.coverImage ?? null,
+    durationSec: d.durationSec === '' || d.durationSec === undefined ? null : d.durationSec,
+    transcript: d.transcript ?? null,
+    seoTitle: d.seoTitle ?? null,
+    seoDescription: d.seoDescription ?? null,
+    status: d.status,
+    ...(d.status === 'PUBLISHED' && d.publishNow ? { publishedAt: new Date() } : {}),
+  };
+  if (id) await prisma.video.update({ where: { id }, data });
+  else await prisma.video.create({ data });
+  revalidatePath('/admin/videos');
+  revalidatePath('/videos');
+  revalidatePath('/sitemap.xml');
+  return { ok: true };
+}
+
+export async function deleteVideo(formData: FormData) {
+  await requireAdmin();
+  const id = formData.get('id');
+  if (typeof id === 'string') await prisma.video.delete({ where: { id } }).catch(() => { });
+  revalidatePath('/admin/videos');
+  revalidatePath('/videos');
+  revalidatePath('/sitemap.xml');
+}

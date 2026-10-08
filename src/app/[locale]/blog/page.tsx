@@ -21,7 +21,7 @@ export default async function BlogPage({ params }: { params: Promise<{ locale: s
     });
 
     return (
-        <main className="mx-auto max-w-[960px] px-5 py-10">
+        <main className="mx-auto max-w-[1440px] px-5 py-10 2xl:px-12">
             <h1 className="text-3xl font-black text-neutral-900 sm:text-4xl">Packaging Blog</h1>
             <p className="mt-2 max-w-2xl text-neutral-600">
                 Materials, printing, dielines and sourcing — in-depth, professional guides for B2B buyers.
@@ -30,7 +30,7 @@ export default async function BlogPage({ params }: { params: Promise<{ locale: s
             {posts.length === 0 ? (
                 <p className="mt-12 text-neutral-500">No articles published yet — check back soon.</p>
             ) : (
-                <div className="mt-8 grid gap-6 sm:grid-cols-2">
+                <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                     {posts.map((p) => (
                         <Link key={p.slug} href={`/blog/${p.slug}`} className="group flex flex-col rounded-2xl border border-neutral-200 bg-white p-5 transition hover:border-neutral-900">
                             {p.coverImage && (

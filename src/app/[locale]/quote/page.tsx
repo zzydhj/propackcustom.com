@@ -15,7 +15,7 @@ async function Quote({ params }: { params: Promise<{ locale: string }> }) {
 function QuoteContent() {
   const t = useTranslations('QuoteForm');
   return (
-    <main className="mx-auto max-w-3xl px-5 py-16 2xl:px-12">
+    <main className="mx-auto max-w-5xl px-5 py-16 2xl:px-12">
       <div className="mb-10 text-center">
         <span className="inline-flex items-center rounded-full bg-[#ffec5a] px-3 py-1 text-xs font-bold uppercase tracking-wide text-neutral-900">
           {t('eyebrow')}

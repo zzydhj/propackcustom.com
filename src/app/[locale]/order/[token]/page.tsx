@@ -80,7 +80,7 @@ async function View({ params }: { params: Promise<{ locale: string; token: strin
     const awaiting = status === 'AWAITING_PAYMENT' || status === 'PENDING_PAYMENT';
 
     return (
-        <main className="mx-auto max-w-3xl px-5 py-12 2xl:px-12">
+        <main className="mx-auto max-w-5xl px-5 py-12 2xl:px-12">
             {/* 头部 */}
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
