@@ -221,6 +221,7 @@ model Quote {
   detail      Json // 所选规格快照
   notes       String? // 备注（原创字段）
   artworkId   String?
+  designId    String? // 软引用 UserDesign.id：客户在线设计作品
   status      QuoteStatus @default(PENDING)
   quotedPrice Decimal?    @db.Decimal(10, 2)
   currency    String      @default("USD")

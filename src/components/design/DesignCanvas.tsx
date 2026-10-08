@@ -134,16 +134,26 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                 </div>
 
                 {savedId && (
-                    <div className="border-t border-neutral-100 pt-3">
+                    <div className="space-y-2 border-t border-neutral-100 pt-3">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                try { localStorage.setItem('pp_order_design', savedId); } catch { /* ignore */ }
+                                router.push('/quote');
+                            }}
+                            className="w-full rounded-lg bg-[#ffec5a] px-3 py-2 text-sm font-black text-neutral-900 transition hover:brightness-95"
+                        >
+                            Get expert quote →
+                        </button>
                         <button
                             type="button"
                             onClick={() => {
                                 try { localStorage.setItem('pp_order_design', savedId); } catch { /* ignore */ }
                                 router.push('/products');
                             }}
-                            className="w-full rounded-lg bg-[#ffec5a] px-3 py-2 text-sm font-black text-neutral-900 transition hover:brightness-95"
+                            className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-900"
                         >
-                            Order this design →
+                            Order with a product →
                         </button>
                     </div>
                 )}

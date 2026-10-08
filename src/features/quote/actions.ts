@@ -12,6 +12,7 @@ const rfqSchema = z.object({
   contactName: z.string().min(1, 'required'),
   email: z.string().email('invalid'),
   notes: z.string().max(2000).optional(),
+  designId: z.string().optional(),
 });
 
 export type RfqState = {
@@ -30,6 +31,7 @@ export async function submitRfq(_prev: RfqState | null, formData: FormData): Pro
     contactName: formData.get('contactName'),
     email: formData.get('email'),
     notes: formData.get('notes') || undefined,
+    designId: formData.get('designId') || undefined,
   };
 
   const parsed = rfqSchema.safeParse(raw);
@@ -52,6 +54,7 @@ export async function submitRfq(_prev: RfqState | null, formData: FormData): Pro
       email: d.email,
       notes: d.notes,
       detail: { material: d.material ?? null, size: d.size ?? null },
+      designId: d.designId ?? null,
     },
   });
 
