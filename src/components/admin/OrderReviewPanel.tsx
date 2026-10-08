@@ -21,6 +21,8 @@ export type ReviewOrder = {
     payUrl: string | null;
     proofFileName: string | null;
     artworkId: string | null;
+    designId: string | null;
+    designType: string | null;
     email: string | null;
     expiresAt: string | null;
     trackingNo: string;

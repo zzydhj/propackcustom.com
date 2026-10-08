@@ -146,6 +146,13 @@ async function List({ params, searchParams }: { params: Promise<{ locale: string
     include: { user: true, items: { include: { product: true } }, address: true },
   });
 
+  // 设计链接批量查作品类型（后台「查看设计」链接需要 /design/[productType] 路径）
+  const designIds = [...new Set(orders.map((o) => o.designId).filter((x): x is string => !!x))];
+  const designRows = designIds.length
+    ? await prisma.userDesign.findMany({ where: { id: { in: designIds } }, select: { id: true, productType: true } })
+    : [];
+  const designMap = new Map(designRows.map((d) => [d.id, d.productType ?? 'label']));
+
   const rows: Row[] = orders.map((o) => {
     const item = o.items[0];
     const specs = (item?.specs ?? {}) as ItemSpecs;
@@ -177,6 +184,8 @@ async function List({ params, searchParams }: { params: Promise<{ locale: string
         payUrl: o.payUrl,
         proofFileName: o.proofFileName,
         artworkId: o.artworkId,
+        designId: o.designId,
+        designType: o.designId ? designMap.get(o.designId) ?? null : null,
         email: o.email ?? o.user?.email ?? null,
         expiresAt: o.expiresAt?.toISOString() ?? null,
         trackingNo: o.trackingNo ?? '',
@@ -383,6 +392,16 @@ function ListView({
                         className="text-xs font-semibold text-neutral-900 underline"
                       >
                         下载素材
+                      </a>
+                    )}
+                    {r.order.designId && (
+                      <a
+                        href={`/design/${r.order.designType ?? 'label'}?design=${r.order.designId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-2 text-xs font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2"
+                      >
+                        查看设计稿
                       </a>
                     )}
                     {r.note && <p className="mt-1 text-sm text-neutral-600">{r.note}</p>}

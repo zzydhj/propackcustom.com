@@ -58,6 +58,7 @@ export async function saveDesign(args: {
             userId: userId ?? null,
             email: email ?? null,
             templateId: d.templateId ?? null,
+            productType: d.productType ?? null,
             name: d.name,
             sceneJson: scene as never,
             status: 'DRAFT',

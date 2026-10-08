@@ -243,6 +243,7 @@
     "successBody": "Thanks! We'll email you pricing within one business day."
   },
   "Account": {
+    "designs": "My designs",
     "overview": "Overview",
     "quotes": "My quotes",
     "orders": "My orders",

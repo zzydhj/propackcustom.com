@@ -24,6 +24,7 @@
     "sendMagicLink": "发送登录链接"
   },
   "Account": {
+    "designs": "我的设计",
     "orders": "我的订单",
     "noOrders": "暂无订单。",
     "itemsCount": "{count} 件商品",

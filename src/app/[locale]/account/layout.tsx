@@ -22,6 +22,7 @@ function AccountSidebar({ email }: { email: string }) {
     { href: '/account', label: t('overview') },
     { href: '/account/quotes', label: t('quotes') },
     { href: '/account/orders', label: t('orders') },
+    { href: '/account/designs', label: t('designs') },
     { href: '/account/wallet', label: t('wallet') },
     { href: '/account/addresses', label: t('addresses') },
   ];

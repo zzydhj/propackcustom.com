@@ -387,6 +387,7 @@ model UserDesign {
   userId     String? // 软引用：登录按邮箱认领匿名作品
   email      String?
   templateId String? // 软引用 DesignTemplate.id
+  productType String? // label/card/box…：重建编辑器路径 /design/[productType]
   name       String       @default("Untitled design")
   sceneJson  Json // Fabric 画布序列化
   exportKey  String? // R2 导出成品对象键（PDF/PNG）
