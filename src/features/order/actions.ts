@@ -106,6 +106,7 @@ export async function createProductOrder(_prev: CheckoutState | null, formData: 
 
     // 素材与凭证：文件本身已由浏览器直传 R2，这里只登记引用（R2 未配置时退化为文件名）
     const artworkId = ((formData.get('artworkId') as string) || '').trim() || null;
+    const designId = ((formData.get('designId') as string) || '').trim() || null;
     const artworkName = ((formData.get('artwork') as string) || '').trim();
     const orderNote = ((formData.get('note') as string) || '').trim();
     const productName = en(product.name) || product.slug;
@@ -158,6 +159,7 @@ export async function createProductOrder(_prev: CheckoutState | null, formData: 
                 addressId,
                 shipping: d satisfies Shipping,
                 artworkId,
+                designId,
                 expiresAt,
                 items: {
                     create: {

@@ -133,6 +133,21 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                     <button type="button" className={tool} onClick={downloadPNG}>Export PNG</button>
                 </div>
 
+                {savedId && (
+                    <div className="border-t border-neutral-100 pt-3">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                try { localStorage.setItem('pp_order_design', savedId); } catch { /* ignore */ }
+                                router.push('/products');
+                            }}
+                            className="w-full rounded-lg bg-[#ffec5a] px-3 py-2 text-sm font-black text-neutral-900 transition hover:brightness-95"
+                        >
+                            Order this design →
+                        </button>
+                    </div>
+                )}
+
                 <p className="mt-auto pt-3 text-[11px] text-neutral-400">Fabric.js · millimetre units · bleed-aware output in a later milestone.</p>
             </aside>
 

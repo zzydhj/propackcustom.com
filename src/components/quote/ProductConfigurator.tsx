@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useActionState } from 'react';
 import { Link } from '@/navigation';
 import { createProductOrder, type CheckoutState } from '@/features/order/actions';
@@ -126,6 +126,14 @@ export function ProductConfigurator({
     const [artworkId, setArtworkId] = useState('');
     // R2 未配置 / 网络异常时降级为「只记文件名」，绝不因此卡住下单
     const [uploadFallback, setUploadFallback] = useState(false);
+    const [designId, setDesignId] = useState('');
+
+    // M2a：从 localStorage 读取设计器传来的 designId（一次性，读完即清）
+    useEffect(() => {
+        const d = localStorage.getItem('pp_order_design');
+        if (d) { setDesignId(d); localStorage.removeItem('pp_order_design'); }
+    }, []);
+
     const [state, formAction, pending] = useActionState<CheckoutState | null, FormData>(createProductOrder, null);
 
     // 每次改动都用「全部已选」重算到不动点（级联 forced/prune，任意顺序都自洽）
@@ -270,6 +278,7 @@ export function ProductConfigurator({
             <input type="hidden" name="selections" value={JSON.stringify(cs.selections)} />
             <input type="hidden" name="artwork" value={artwork} />
             <input type="hidden" name="artworkId" value={artworkId} />
+            {designId && <input type="hidden" name="designId" value={designId} />}
 
             {/* 1. 规格配置 */}
             <Sec id="configuration" title="Configuration">
