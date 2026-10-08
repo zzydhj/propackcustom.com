@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Link, useRouter } from '@/navigation';
-import { useFabricCanvas } from './useFabricCanvas';
+import { useFabricCanvas, PX_PER_MM } from './useFabricCanvas';
 import { saveDesign } from '@/features/design/actions';
 
 const tool = 'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 disabled:cursor-not-allowed disabled:opacity-40';
@@ -16,10 +16,13 @@ type Props = {
     templateId?: string | null;
     name?: string;
     templateName?: string;
+    dielineSvg?: string;
+    bleedMm?: number;
+    safeAreaMm?: number;
 };
 
 // 全屏左右工作台：左栏 = 作品命名/保存 + 编辑工具；右栏 = 画布工作区（占满剩余视口）。
-export default function DesignCanvas({ productType, widthMm = 100, heightMm = 100, initialScene, designId, templateId, name, templateName }: Props) {
+export default function DesignCanvas({ productType, widthMm = 100, heightMm = 100, initialScene, designId, templateId, name, templateName, dielineSvg, bleedMm = 3, safeAreaMm = 3 }: Props) {
     const {
         canvasElRef, canvasRef, ready,
         addText, addImage, removeActive, undo, redo, canUndo, canRedo,
@@ -33,6 +36,7 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
     const [savedId, setSavedId] = useState<string | undefined>(designId);
     const [saving, setSaving] = useState(false);
     const [msg, setMsg] = useState('');
+    const [guides, setGuides] = useState(true);
 
     useEffect(() => {
         if (ready && initialScene) importJSON(initialScene);
@@ -133,6 +137,11 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                     <button type="button" className={tool} onClick={downloadPNG}>Export PNG</button>
                 </div>
 
+                <label className="flex items-center gap-2 text-sm text-neutral-600">
+                    <input type="checkbox" checked={guides} onChange={(e) => setGuides(e.target.checked)} className="accent-neutral-900" />
+                    Show bleed &amp; safe guides
+                </label>
+
                 {savedId && (
                     <div className="space-y-2 border-t border-neutral-100 pt-3">
                         <button
@@ -165,6 +174,18 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
             <main className="relative flex flex-1 items-center justify-center overflow-auto bg-neutral-100 p-8">
                 <div className="relative w-fit rounded bg-white shadow-md">
                     <canvas ref={canvasElRef} />
+                    {/* 刀版/出血/安全区：独立 HTML 覆盖层，不进 Fabric 对象树 → sceneJson 与导出产物保持干净 */}
+                    <div className="pointer-events-none absolute inset-0 overflow-visible">
+                        {dielineSvg && (
+                            <div className="absolute inset-0 [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: dielineSvg }} />
+                        )}
+                        {guides && bleedMm > 0 && (
+                            <div className="absolute border border-red-400/80" style={{ inset: -bleedMm * PX_PER_MM }} title={`bleed ${bleedMm}mm`} />
+                        )}
+                        {guides && safeAreaMm > 0 && (
+                            <div className="absolute border border-dashed border-blue-400/70" style={{ inset: safeAreaMm * PX_PER_MM }} title={`safe area ${safeAreaMm}mm`} />
+                        )}
+                    </div>
                     {!ready && (
                         <div className="absolute inset-0 grid place-items-center text-sm text-neutral-400">Initializing canvas…</div>
                     )}

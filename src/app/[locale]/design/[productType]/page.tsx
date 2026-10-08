@@ -32,6 +32,9 @@ export default async function DesignPage({ params, searchParams }: Props) {
                 templateId={design.templateId}
                 name={design.name}
                 templateName={tpl?.name}
+                dielineSvg={tpl?.dielineSvg ?? undefined}
+                bleedMm={tpl?.bleedMm ?? 3}
+                safeAreaMm={tpl?.safeAreaMm ?? 3}
             />
         );
     }
@@ -49,6 +52,9 @@ export default async function DesignPage({ params, searchParams }: Props) {
                 heightMm={selected.heightMm ?? 100}
                 templateId={selected.id}
                 templateName={selected.name}
+                dielineSvg={selected.dielineSvg ?? undefined}
+                bleedMm={selected.bleedMm}
+                safeAreaMm={selected.safeAreaMm}
                 initialScene={objects.length ? JSON.stringify({ version: '7.4.0', objects }) : undefined}
             />
         );

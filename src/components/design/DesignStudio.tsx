@@ -21,6 +21,9 @@ export function DesignStudio({
     templateId,
     name,
     templateName,
+    dielineSvg,
+    bleedMm,
+    safeAreaMm,
 }: {
     productType: string;
     widthMm?: number;
@@ -30,6 +33,9 @@ export function DesignStudio({
     templateId?: string | null;
     name?: string;
     templateName?: string;
+    dielineSvg?: string;
+    bleedMm?: number;
+    safeAreaMm?: number;
 }) {
     // 编辑器全屏：锁定背景滚动（否则底层 header/footer 仍在文档流，可滚出滞动条）
     useEffect(() => {
@@ -50,6 +56,9 @@ export function DesignStudio({
                 templateId={templateId}
                 name={name}
                 templateName={templateName}
+                dielineSvg={dielineSvg}
+                bleedMm={bleedMm}
+                safeAreaMm={safeAreaMm}
             />
         </div>
     );
