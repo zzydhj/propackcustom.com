@@ -142,11 +142,31 @@ export function useFabricCanvas(opts: Opts = {}) {
 
     const exportPNG = useCallback((multiplier = 2) => canvasRef.current?.toDataURL({ format: 'png', multiplier }) ?? '', []);
 
+    // 导出 SVG：根节点尺寸替换为物理毫米 + viewBox，保证 Ai/Inkscape/印厂打开即真实尺寸
+    const exportSVG = useCallback((): string => {
+        const c = canvasRef.current;
+        if (!c) return '';
+        const raw = c.toSVG();
+        const pxW = c.getWidth();
+        const pxH = c.getHeight();
+        const mmW = (pxW / PX_PER_MM).toFixed(2).replace(/\.?0+$/, '');
+        const mmH = (pxH / PX_PER_MM).toFixed(2).replace(/\.?0+$/, '');
+        return raw.replace(/<svg\b[^>]*>/, (tag) => {
+            let t = tag;
+            if (/\swidth="[^"]*"/.test(t)) t = t.replace(/\swidth="[^"]*"/, ` width="${mmW}mm"`);
+            else t = t.replace('<svg', `<svg width="${mmW}mm"`);
+            if (/\sheight="[^"]*"/.test(t)) t = t.replace(/\sheight="[^"]*"/, ` height="${mmH}mm"`);
+            else t = t.replace('<svg', `<svg height="${mmH}mm"`);
+            if (!/viewBox=/.test(t)) t = t.replace('<svg', `<svg viewBox="0 0 ${pxW} ${pxH}"`);
+            return t;
+        });
+    }, [canvasRef]);
+
     return {
         canvasElRef, canvasRef, ready,
         addText, addImage, removeActive, undo, redo,
         canUndo: history.current.idx > 0,
         canRedo: history.current.idx < history.current.stack.length - 1,
-        exportJSON, importJSON, exportPNG,
+        exportJSON, importJSON, exportPNG, exportSVG,
     };
 }

@@ -26,7 +26,7 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
     const {
         canvasElRef, canvasRef, ready,
         addText, addImage, removeActive, undo, redo, canUndo, canRedo,
-        exportJSON, importJSON, exportPNG,
+        exportJSON, importJSON, exportPNG, exportSVG,
     } = useFabricCanvas({ widthMm, heightMm });
 
     const fileRef = useRef<HTMLInputElement>(null);
@@ -91,6 +91,39 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
         a.click();
     };
 
+    // 矢量 SVG：物理毫米尺寸根节点，Ai/Inkscape 打开即真实尺寸，可转曲可转 PDF
+    const downloadSVG = () => {
+        const svg = exportSVG();
+        if (!svg) return;
+        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'design.svg';
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // 浏览器端直出 mm 精确 PDF（jspdf+svg2pdf 动态加载，不进首屏 bundle）
+    async function downloadPDF() {
+        if (!ready) return;
+        setMsg('Rendering PDF…');
+        try {
+            const [{ jsPDF }] = await Promise.all([import('jspdf'), import('svg2pdf.js')]);
+            const svg = exportSVG();
+            if (!svg) throw new Error('empty svg');
+            // svg2pdf 要求已解析的 SVGElement：传字符串会在 collectStyleSheetTexts 里炸（rootSvg.querySelectorAll 不存在）
+            const svgEl = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+            const doc = new jsPDF({ orientation: widthMm >= heightMm ? 'landscape' : 'portrait', unit: 'mm', format: [widthMm, heightMm] });
+            await (doc as unknown as { svg(node: unknown, opts: { x: number; y: number; width: number; height: number }): Promise<unknown> }).svg(svgEl, { x: 0, y: 0, width: widthMm, height: heightMm });
+            (doc as unknown as { save(name: string): void }).save('design.pdf');
+            setMsg('PDF saved ✓ — outline fonts before printing');
+        } catch (err) {
+            console.error('[design] PDF export failed', err);
+            setMsg('PDF render failed — use Export SVG instead');
+        }
+    }
+
     return (
         <div className="flex h-full w-full">
             {/* 左栏：作品 + 工具 */}
@@ -134,6 +167,8 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                     <button type="button" className={tool} onClick={() => jsonRef.current?.click()}>Import JSON</button>
                     <input ref={jsonRef} type="file" accept="application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then(importJSON); e.target.value = ''; }} />
                     <button type="button" className={tool} onClick={downloadJSON}>Export JSON</button>
+                    <button type="button" className={tool} onClick={downloadSVG}>Export SVG (vector)</button>
+                    <button type="button" className={tool} onClick={() => void downloadPDF()}>Export PDF (print)</button>
                     <button type="button" className={tool} onClick={downloadPNG}>Export PNG</button>
                 </div>
 
