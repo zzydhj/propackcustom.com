@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from '@/navigation';
+import { Link, useRouter } from '@/navigation';
 import { useFabricCanvas } from './useFabricCanvas';
 import { saveDesign } from '@/features/design/actions';
 
-const btn = 'rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 disabled:cursor-not-allowed disabled:opacity-40';
+const tool = 'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 disabled:cursor-not-allowed disabled:opacity-40';
 
 type Props = {
     productType: string;
@@ -15,10 +15,11 @@ type Props = {
     designId?: string;
     templateId?: string | null;
     name?: string;
+    templateName?: string;
 };
 
-// 画布 + 编辑工具栏 + 作品保存。被 DesignStudio 以 dynamic(ssr:false) 载入，可安全顶层 import fabric（经 hook）。
-export default function DesignCanvas({ productType, widthMm, heightMm, initialScene, designId, templateId, name }: Props) {
+// 全屏左右工作台：左栏 = 作品命名/保存 + 编辑工具；右栏 = 画布工作区（占满剩余视口）。
+export default function DesignCanvas({ productType, widthMm = 100, heightMm = 100, initialScene, designId, templateId, name, templateName }: Props) {
     const {
         canvasElRef, canvasRef, ready,
         addText, addImage, removeActive, undo, redo, canUndo, canRedo,
@@ -33,7 +34,6 @@ export default function DesignCanvas({ productType, widthMm, heightMm, initialSc
     const [saving, setSaving] = useState(false);
     const [msg, setMsg] = useState('');
 
-    // 载入已有场景（模板预置或已存作品）
     useEffect(() => {
         if (ready && initialScene) importJSON(initialScene);
     }, [ready, initialScene, importJSON]);
@@ -88,46 +88,63 @@ export default function DesignCanvas({ productType, widthMm, heightMm, initialSc
     };
 
     return (
-        <div className="flex flex-col gap-4">
-            {/* 作品栏：命名 + 保存 */}
-            <div className="flex flex-wrap items-center gap-2">
-                <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Design name"
-                    className="w-56 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-semibold outline-none focus:border-neutral-900"
-                />
-                <button type="button" onClick={handleSave} disabled={saving || !ready} className="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50">
-                    {saving ? 'Saving…' : 'Save'}
-                </button>
-                {savedId && <span className="text-xs text-neutral-400">#{savedId.slice(0, 8)}</span>}
-                {msg && <span className="text-xs text-neutral-500">{msg}</span>}
-            </div>
+        <div className="flex h-full w-full">
+            {/* 左栏：作品 + 工具 */}
+            <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-r border-neutral-200 bg-white p-4">
+                <div className="flex items-center justify-between">
+                    <Link href={`/design/${productType}`} className="text-sm text-neutral-500 hover:text-neutral-900">← Templates</Link>
+                    {savedId && <span className="text-xs text-neutral-400">#{savedId.slice(0, 8)}</span>}
+                </div>
 
-            {/* 工具栏 */}
-            <div className="flex flex-wrap items-center gap-2">
-                <button type="button" className={btn} onClick={addText}>+ Text</button>
-                <button type="button" className={btn} onClick={() => fileRef.current?.click()}>+ Image</button>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void addImage(f); e.target.value = ''; }} />
-                <button type="button" className={btn} onClick={removeActive}>Delete</button>
-                <span className="mx-1 h-5 w-px bg-neutral-200" />
-                <button type="button" className={btn} onClick={undo} disabled={!canUndo}>Undo</button>
-                <button type="button" className={btn} onClick={redo} disabled={!canRedo}>Redo</button>
-                <span className="mx-1 h-5 w-px bg-neutral-200" />
-                <button type="button" className={btn} onClick={() => jsonRef.current?.click()}>Import JSON</button>
-                <input ref={jsonRef} type="file" accept="application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then(importJSON); e.target.value = ''; }} />
-                <button type="button" className={btn} onClick={downloadJSON}>Export JSON</button>
-                <button type="button" className={btn} onClick={downloadPNG}>Export PNG</button>
-            </div>
+                <div>
+                    <h2 className="text-base font-bold text-neutral-900">Design Studio</h2>
+                    <p className="text-xs text-neutral-500">{templateName ?? productType} · {widthMm}×{heightMm}mm</p>
+                </div>
 
-            <div className="flex min-h-[calc(100vh-300px)] items-center justify-center overflow-auto rounded-2xl border border-neutral-200 bg-neutral-100 p-6">
+                <div className="space-y-2">
+                    <input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="Design name"
+                        className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900"
+                    />
+                    <button type="button" onClick={handleSave} disabled={saving || !ready} className="w-full rounded-lg bg-neutral-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50">
+                        {saving ? 'Saving…' : 'Save'}
+                    </button>
+                    {msg && <p className="text-xs text-neutral-500">{msg}</p>}
+                </div>
+
+                <div className="space-y-2 border-t border-neutral-100 pt-3">
+                    <button type="button" className={tool} onClick={addText}>+ Add text</button>
+                    <button type="button" className={tool} onClick={() => fileRef.current?.click()}>+ Upload image</button>
+                    <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void addImage(f); e.target.value = ''; }} />
+                    <button type="button" className={tool} onClick={removeActive}>Delete selected</button>
+                </div>
+
+                <div className="flex gap-2 border-t border-neutral-100 pt-3">
+                    <button type="button" className={`${tool} flex-1`} onClick={undo} disabled={!canUndo}>↶ Undo</button>
+                    <button type="button" className={`${tool} flex-1`} onClick={redo} disabled={!canRedo}>↷ Redo</button>
+                </div>
+
+                <div className="space-y-2 border-t border-neutral-100 pt-3">
+                    <button type="button" className={tool} onClick={() => jsonRef.current?.click()}>Import JSON</button>
+                    <input ref={jsonRef} type="file" accept="application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then(importJSON); e.target.value = ''; }} />
+                    <button type="button" className={tool} onClick={downloadJSON}>Export JSON</button>
+                    <button type="button" className={tool} onClick={downloadPNG}>Export PNG</button>
+                </div>
+
+                <p className="mt-auto pt-3 text-[11px] text-neutral-400">Fabric.js · millimetre units · bleed-aware output in a later milestone.</p>
+            </aside>
+
+            {/* 右栏：画布工作区 */}
+            <main className="relative flex flex-1 items-center justify-center overflow-auto bg-neutral-100 p-8">
                 <div className="relative w-fit rounded bg-white shadow-md">
                     <canvas ref={canvasElRef} />
                     {!ready && (
                         <div className="absolute inset-0 grid place-items-center text-sm text-neutral-400">Initializing canvas…</div>
                     )}
                 </div>
-            </div>
+            </main>
         </div>
     );
 }

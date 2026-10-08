@@ -1,14 +1,17 @@
 'use client';
 
+import { useEffect } from 'react';
 import dynamic from 'next/dynamic';
 
-// 画布依赖 window，必须 ssr:false；把 dynamic 放在这个 client 组件里（App Router 规则：
-// ssr:false 的 next/dynamic 只能在 client component 使用）。
+// 编辑器只能在客户端加载（fabric 依赖 window）；这里强制 ssr:false。
 const DesignCanvas = dynamic(() => import('./DesignCanvas'), {
     ssr: false,
-    loading: () => <div className="grid h-[400px] place-items-center text-sm text-neutral-400">Loading design canvas…</div>,
+    loading: () => (
+        <div className="grid h-full w-full place-items-center bg-neutral-50 text-sm text-neutral-400">Loading designer…</div>
+    ),
 });
 
+// 全屏左右工作台容器：fixed 覆盖站点导航/页脚，占满整个浏览器视口。
 export function DesignStudio({
     productType,
     widthMm = 100,
@@ -17,6 +20,7 @@ export function DesignStudio({
     designId,
     templateId,
     name,
+    templateName,
 }: {
     productType: string;
     widthMm?: number;
@@ -25,16 +29,28 @@ export function DesignStudio({
     designId?: string;
     templateId?: string | null;
     name?: string;
+    templateName?: string;
 }) {
+    // 编辑器全屏：锁定背景滚动（否则底层 header/footer 仍在文档流，可滚出滞动条）
+    useEffect(() => {
+        const html = document.documentElement;
+        const prev = html.style.overflow;
+        html.style.overflow = 'hidden';
+        return () => { html.style.overflow = prev; };
+    }, []);
+
     return (
-        <div className="flex flex-col gap-4">
-            <div>
-                <h2 className="text-lg font-bold text-neutral-900">Design Studio</h2>
-                <p className="text-sm text-neutral-500">
-                    Product type: <span className="font-mono">{productType}</span> — pick a template, edit text and artwork in your browser, then save and order.
-                </p>
-            </div>
-            <DesignCanvas productType={productType} widthMm={widthMm} heightMm={heightMm} initialScene={initialScene} designId={designId} templateId={templateId} name={name} />
+        <div className="fixed inset-0 z-[60] flex bg-neutral-50">
+            <DesignCanvas
+                productType={productType}
+                widthMm={widthMm}
+                heightMm={heightMm}
+                initialScene={initialScene}
+                designId={designId}
+                templateId={templateId}
+                name={name}
+                templateName={templateName}
+            />
         </div>
     );
 }

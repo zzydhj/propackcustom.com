@@ -18,57 +18,43 @@ export default async function DesignPage({ params, searchParams }: Props) {
     const sp = await searchParams;
     setRequestLocale(locale);
 
-    const shell = (children: React.ReactNode) => (
-        <main className="w-full px-3 py-5 sm:px-6">{children}</main>
-    );
-
     // 1) 载入已有作品（最高优先）：可继续编辑并保存回同一条
     const design = sp.design ? await prisma.userDesign.findUnique({ where: { id: sp.design } }) : null;
     if (design) {
         const tpl = design.templateId ? await prisma.designTemplate.findUnique({ where: { id: design.templateId } }) : null;
-        return shell(
-            <>
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <Link href={`/design/${productType}`} className="text-sm text-neutral-500 hover:text-neutral-900">← Back to templates</Link>
-                    <span className="text-sm font-medium text-neutral-700">Editing your design{tpl ? ` · ${tpl.widthMm ?? '—'}×${tpl.heightMm ?? '—'}mm` : ''}</span>
-                </div>
-                <DesignStudio
-                    productType={productType}
-                    widthMm={tpl?.widthMm ?? 100}
-                    heightMm={tpl?.heightMm ?? 100}
-                    initialScene={JSON.stringify(design.sceneJson)}
-                    designId={design.id}
-                    templateId={design.templateId}
-                    name={design.name}
-                />
-            </>,
+        return (
+            <DesignStudio
+                productType={productType}
+                widthMm={tpl?.widthMm ?? 100}
+                heightMm={tpl?.heightMm ?? 100}
+                initialScene={JSON.stringify(design.sceneJson)}
+                designId={design.id}
+                templateId={design.templateId}
+                name={design.name}
+                templateName={tpl?.name}
+            />
         );
     }
 
-    // 2) 选模板：套用尺寸 + 预置场景进入编辑器（保存时关联 templateId）
+    // 2) 选模板：套用尺寸 + 预置场景进入全屏编辑器（保存时关联 templateId）
     const selected = sp.template
         ? await prisma.designTemplate.findFirst({ where: { slug: sp.template, productType, active: true } })
         : null;
     if (selected) {
         const objects = (selected.sceneTemplate as { objects?: unknown[] } | null)?.objects ?? [];
-        return shell(
-            <>
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <Link href={`/design/${productType}`} className="text-sm text-neutral-500 hover:text-neutral-900">← Choose another template</Link>
-                    <span className="text-sm font-medium text-neutral-700">{selected.name} · {selected.widthMm ?? '—'}×{selected.heightMm ?? '—'}mm</span>
-                </div>
-                <DesignStudio
-                    productType={productType}
-                    widthMm={selected.widthMm ?? 100}
-                    heightMm={selected.heightMm ?? 100}
-                    templateId={selected.id}
-                    initialScene={objects.length ? JSON.stringify({ version: '7.4.0', objects }) : undefined}
-                />
-            </>,
+        return (
+            <DesignStudio
+                productType={productType}
+                widthMm={selected.widthMm ?? 100}
+                heightMm={selected.heightMm ?? 100}
+                templateId={selected.id}
+                templateName={selected.name}
+                initialScene={objects.length ? JSON.stringify({ version: '7.4.0', objects }) : undefined}
+            />
         );
     }
 
-    // 3) 有该类型模板：展示模板库供选择
+    // 3) 有该类型模板：展示模板库供选择（常规网格页，非全屏）
     const templates = await prisma.designTemplate.findMany({
         where: { productType, active: true },
         orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }],
@@ -102,6 +88,6 @@ export default async function DesignPage({ params, searchParams }: Props) {
         );
     }
 
-    // 4) 该类型暂无模板：空白画布
-    return shell(<DesignStudio productType={productType} />);
+    // 4) 该类型暂无模板：全屏空白画布
+    return <DesignStudio productType={productType} />;
 }
