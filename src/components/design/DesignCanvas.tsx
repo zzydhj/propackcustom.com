@@ -1,12 +1,24 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from '@/navigation';
 import { useFabricCanvas } from './useFabricCanvas';
+import { saveDesign } from '@/features/design/actions';
 
 const btn = 'rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 disabled:cursor-not-allowed disabled:opacity-40';
 
-// 画布 + 编辑工具栏。被 DesignStudio 以 dynamic(ssr:false) 载入，可安全顶层 import fabric（经 hook）。
-export default function DesignCanvas({ widthMm, heightMm, initialScene }: { widthMm?: number; heightMm?: number; initialScene?: string }) {
+type Props = {
+    productType: string;
+    widthMm?: number;
+    heightMm?: number;
+    initialScene?: string;
+    designId?: string;
+    templateId?: string | null;
+    name?: string;
+};
+
+// 画布 + 编辑工具栏 + 作品保存。被 DesignStudio 以 dynamic(ssr:false) 载入，可安全顶层 import fabric（经 hook）。
+export default function DesignCanvas({ productType, widthMm, heightMm, initialScene, designId, templateId, name }: Props) {
     const {
         canvasElRef, canvasRef, ready,
         addText, addImage, removeActive, undo, redo, canUndo, canRedo,
@@ -15,13 +27,18 @@ export default function DesignCanvas({ widthMm, heightMm, initialScene }: { widt
 
     const fileRef = useRef<HTMLInputElement>(null);
     const jsonRef = useRef<HTMLInputElement>(null);
+    const router = useRouter();
+    const [title, setTitle] = useState(name ?? 'Untitled design');
+    const [savedId, setSavedId] = useState<string | undefined>(designId);
+    const [saving, setSaving] = useState(false);
+    const [msg, setMsg] = useState('');
 
-    // 载入已有场景（M1b 从库读；也可由导入 JSON 复用）
+    // 载入已有场景（模板预置或已存作品）
     useEffect(() => {
         if (ready && initialScene) importJSON(initialScene);
     }, [ready, initialScene, importJSON]);
 
-    // 键盘 Delete 删除选中对象；正在编辑文字时不拦截（交给 Fabric 内建文本编辑）
+    // 键盘 Delete 删除选中；文本编辑态不拦截
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== 'Delete') return;
@@ -35,6 +52,21 @@ export default function DesignCanvas({ widthMm, heightMm, initialScene }: { widt
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [canvasRef, removeActive]);
+
+    async function handleSave() {
+        if (!ready) return;
+        setSaving(true);
+        setMsg('');
+        const res = await saveDesign({ id: savedId, sceneJson: exportJSON(), name: title, templateId: templateId ?? undefined, productType });
+        setSaving(false);
+        if (res.ok && res.id) {
+            setSavedId(res.id);
+            setMsg('已保存 ✓');
+            router.replace(`/design/${productType}?design=${res.id}`);
+        } else {
+            setMsg(res.error === 'forbidden' ? '无权保存该作品' : '保存失败');
+        }
+    }
 
     const downloadJSON = () => {
         const blob = new Blob([exportJSON()], { type: 'application/json' });
@@ -57,6 +89,22 @@ export default function DesignCanvas({ widthMm, heightMm, initialScene }: { widt
 
     return (
         <div className="flex flex-col gap-4">
+            {/* 作品栏：命名 + 保存 */}
+            <div className="flex flex-wrap items-center gap-2">
+                <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Design name"
+                    className="w-56 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-semibold outline-none focus:border-neutral-900"
+                />
+                <button type="button" onClick={handleSave} disabled={saving || !ready} className="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50">
+                    {saving ? 'Saving…' : 'Save'}
+                </button>
+                {savedId && <span className="text-xs text-neutral-400">#{savedId.slice(0, 8)}</span>}
+                {msg && <span className="text-xs text-neutral-500">{msg}</span>}
+            </div>
+
+            {/* 工具栏 */}
             <div className="flex flex-wrap items-center gap-2">
                 <button type="button" className={btn} onClick={addText}>+ Text</button>
                 <button type="button" className={btn} onClick={() => fileRef.current?.click()}>+ Image</button>

@@ -14,11 +14,17 @@ export function DesignStudio({
     widthMm = 100,
     heightMm = 100,
     initialScene,
+    designId,
+    templateId,
+    name,
 }: {
     productType: string;
     widthMm?: number;
     heightMm?: number;
     initialScene?: string;
+    designId?: string;
+    templateId?: string | null;
+    name?: string;
 }) {
     return (
         <div className="flex flex-col gap-4">
@@ -29,7 +35,7 @@ export function DesignStudio({
                     （text · image · move/scale/rotate · delete · undo/redo · import/export）
                 </p>
             </div>
-            <DesignCanvas widthMm={widthMm} heightMm={heightMm} initialScene={initialScene} />
+            <DesignCanvas productType={productType} widthMm={widthMm} heightMm={heightMm} initialScene={initialScene} designId={designId} templateId={templateId} name={name} />
         </div>
     );
 }
