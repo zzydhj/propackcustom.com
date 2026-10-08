@@ -47,15 +47,18 @@ const orderSchema = z.object({
 
 export async function updateOrder(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
   await requireAdmin();
+  const rawTracking = (formData.get('trackingNo') as string) ?? '';
+  const rawCarrier = (formData.get('carrier') as string) ?? '';
   const parsed = orderSchema.safeParse({
     id: formData.get('id'),
     status: formData.get('status'),
-    trackingNo: (formData.get('trackingNo') as string) || undefined,
-    carrier: (formData.get('carrier') as string) || undefined,
+    trackingNo: rawTracking || undefined,
+    carrier: rawCarrier || undefined,
   });
   if (!parsed.success) return { ok: false, error: 'invalid' };
   const d = parsed.data;
-  const data: Record<string, unknown> = { status: d.status, trackingNo: d.trackingNo, carrier: d.carrier };
+  // 空串 → null，让 Prisma 显式清空字段；若传 undefined，Prisma 会跳过该字段导致无法通过 UI 清空
+  const data: Record<string, unknown> = { status: d.status, trackingNo: rawTracking || null, carrier: rawCarrier || null };
   // 推进到已付款时补上时间戳，便于统计回款周期
   if (d.status === 'PAID') data.paidAt = new Date();
   await prisma.order.update({ where: { id: d.id }, data });

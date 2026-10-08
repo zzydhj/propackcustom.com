@@ -19,6 +19,7 @@ export type Shipping = {
     line1: string;
     line2?: string;
     postalCode: string;
+    company?: string; // B 端采购主体：公司名（可选），提升线索质量与发票抬头
 };
 
 export type SpecLine = { label: string; value: string };

@@ -4,6 +4,7 @@ import Apple from 'next-auth/providers/apple';
 import Resend from 'next-auth/providers/resend';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import { prisma } from './prisma';
+import { claimAnonymousRecords } from './claim';
 
 // 全球优先：Google / Apple / 邮箱 Magic Link
 // 微信 / QQ 为二期，需境内备案应用，见文末注释占位
@@ -30,6 +31,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.locale = user.locale;
       }
       return session;
+    },
+  },
+  events: {
+    // 登录成功后把该邮箱名下的匿名订单/询价归集到账号（Google/Apple/Magic Link 走这里）
+    async signIn({ user }) {
+      if (user?.id && user?.email) await claimAnonymousRecords(user.id, user.email);
     },
   },
 });

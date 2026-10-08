@@ -48,6 +48,7 @@ export function ProofUpload({
                         fd.set('viewToken', viewToken);
                         fd.set('proofFileName', f.fileName);
                         fd.set('proofUrl', f.url ?? '');
+                        fd.set('proofKey', f.key ?? '');
                         const res = await attachPaymentProof(fd);
                         if (res.ok) {
                             setSaved(f.fileName);

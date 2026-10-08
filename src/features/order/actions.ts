@@ -18,6 +18,7 @@ const shippingSchema = z.object({
     line1: z.string().min(1),
     line2: z.string().optional(),
     postalCode: z.string().min(1),
+    company: z.string().optional(),
 });
 
 const checkoutSchema = z.object({
@@ -56,6 +57,7 @@ export async function createProductOrder(_prev: CheckoutState | null, formData: 
         line1: formData.get('line1'),
         line2: (formData.get('line2') as string) || undefined,
         postalCode: formData.get('postalCode'),
+        company: (formData.get('company') as string) || undefined,
     });
     if (!shipParsed.success) return { ok: false, errors: ['Please complete the shipping details.'] };
 
@@ -200,6 +202,7 @@ export async function attachPaymentProof(formData: FormData): Promise<ProofState
     const token = String(formData.get('viewToken') || '');
     const proofUrl = String(formData.get('proofUrl') || '').trim();
     const proofFileName = String(formData.get('proofFileName') || '').trim();
+    const proofKey = String(formData.get('proofKey') || '').trim();
     if (!token || !proofFileName) return { ok: false, error: 'invalid' };
 
     const order = await prisma.order.findUnique({ where: { viewToken: token } });
@@ -209,7 +212,8 @@ export async function attachPaymentProof(formData: FormData): Promise<ProofState
     }
     await prisma.order.update({
         where: { id: order.id },
-        data: { proofFileName, proofUrl: proofUrl || null },
+        // proofKey 必存：私有桶下后台靠它按需预签名读取水单，否则销售无法对账
+        data: { proofFileName, proofUrl: proofUrl || null, proofKey: proofKey || null },
     });
     revalidatePath(`/order/${token}`);
     return { ok: true };

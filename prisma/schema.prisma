@@ -226,6 +226,8 @@ model Quote {
   currency    String      @default("USD")
   createdAt   DateTime    @default(now())
   orderId     String? // 软引用 Order.id：报价确认后转订单，避免询价黑洞
+
+  @@index([email]) // 登录时按邮箱认领匿名询价
 }
 
 enum QuoteStatus {
@@ -269,8 +271,10 @@ model Order {
   paymentMethod String? // stripe_link | manual_tt | wallet
   payUrl        String? // 付款链接（Stripe Payment Link 或本站 /order/[token]）
   proofFileName String? // 客户上传的付款凭证文件名
-  proofUrl      String? // 凭证访问地址（R2）
+  proofUrl      String? // 凭证访问地址（配了 R2_PUBLIC_URL 时为公开直链）
+  proofKey      String? // 凭证的 R2 对象键：私有桶下后台靠它按需预签名读取
   artworkId     String? // 软引用 Artwork.id
+  designId      String? // 软引用 UserDesign.id：客户在线设计的可回改作品
   expiresAt     DateTime? // 报价有效期：SUBMITTED 超期未确认自动 EXPIRED
   confirmedAt   DateTime? // 人工确认时间
   paidAt        DateTime?
@@ -284,6 +288,7 @@ model Order {
   createdAt     DateTime    @default(now())
 
   @@index([status, createdAt])
+  @@index([email]) // 登录时按邮箱认领匿名订单
 }
 
 enum OrderStatus {
@@ -296,6 +301,102 @@ enum OrderStatus {
   COMPLETED
   CANCELLED
   EXPIRED // 报价超期未确认
+}
+
+// 内容发布状态（blog / video 共用）
+enum PublishStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// 博客文章：深度专业内容，SEO 主载体。body 存 Markdown
+model Post {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  title          String
+  excerpt        String?
+  body           String // Markdown 正文
+  coverImage     String?
+  tags           String[]
+  author         String?
+  seoTitle       String?
+  seoDescription String?
+  status         PublishStatus @default(DRAFT)
+  publishedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, publishedAt])
+}
+
+// 视频模块：embed（YouTube/Vimeo）或自托管；transcript 文字稿利于 SEO
+model Video {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  title          String
+  description    String?
+  provider       String // youtube | vimeo | self
+  embedId        String? // YouTube/Vimeo 视频 ID
+  videoUrl       String? // 自托管 / R2 直链
+  coverImage     String?
+  durationSec    Int?
+  transcript     String?
+  seoTitle       String?
+  seoDescription String?
+  status         PublishStatus @default(DRAFT)
+  publishedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, publishedAt])
+}
+
+// ── 在线包装设计系统（Design Studio）──
+
+// 设计模板：刀版/出血参考层 + Fabric 预置场景
+enum DesignStatus {
+  DRAFT
+  SUBMITTED
+}
+
+model DesignTemplate {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  productType   String // /design/[productType] 归类
+  category      String?
+  dielineSvg    String? // 刀版/折线/出血参考层（SVG）
+  widthMm       Float?
+  heightMm      Float?
+  bleedMm       Float    @default(3)
+  safeAreaMm    Float    @default(3)
+  sceneTemplate Json? // Fabric JSON 预置内容
+  previewImage  String?
+  active        Boolean  @default(true)
+  sort          Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([productType, active])
+}
+
+// 用户设计作品：sceneJson 存 Fabric 序列化；导出成品落 R2（exportKey）
+model UserDesign {
+  id         String       @id @default(cuid())
+  userId     String? // 软引用：登录按邮箱认领匿名作品
+  email      String?
+  templateId String? // 软引用 DesignTemplate.id
+  name       String       @default("Untitled design")
+  sceneJson  Json // Fabric 画布序列化
+  exportKey  String? // R2 导出成品对象键（PDF/PNG）
+  thumbKey   String? // R2 缩略图键
+  status     DesignStatus @default(DRAFT)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([email])
+  @@index([status, updatedAt])
 }
 
 model OrderItem {

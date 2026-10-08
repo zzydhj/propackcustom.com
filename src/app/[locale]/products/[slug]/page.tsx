@@ -171,6 +171,32 @@ async function Detail({ params }: { params: Promise<{ locale: string; slug: stri
                     {/* Right rail */}
                     <aside>
                         <div className="space-y-6 lg:sticky lg:top-28">
+                            {/* Expert help — 首次引导，醒目置顶 */}
+                            <div className="rounded-2xl border-2 border-[#ffec5a] bg-gradient-to-b from-[#fff7bd] to-white p-5 shadow-sm">
+                                <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">First time here?</p>
+                                <h3 className="mt-1 text-lg font-black text-neutral-900">Not sure what to choose?</h3>
+                                <p className="mt-2 text-sm leading-relaxed text-neutral-600">
+                                    Tell us what you&rsquo;re packaging and your target budget — a packaging expert recommends the
+                                    right material, size and finish, and sends a no-obligation quote.
+                                </p>
+                                <Link href="/quote" className="mt-4 block rounded-lg bg-neutral-900 py-3 text-center text-sm font-bold text-white transition hover:bg-neutral-800">
+                                    Talk to an Expert · Get a Quote
+                                </Link>
+                                <p className="mt-2 text-center text-xs text-neutral-500">Free · No obligation · Reply in 1 business day</p>
+                            </div>
+
+                            {/* B2B trust */}
+                            <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+                                <h3 className="mb-3 text-base font-bold text-neutral-900">Why teams buy from us</h3>
+                                <ul className="space-y-2 text-sm text-neutral-600">
+                                    <li className="flex gap-2"><span className="text-[#f5b301]">✓</span>Factory-direct pricing · MOQ from 100</li>
+                                    <li className="flex gap-2"><span className="text-[#f5b301]">✓</span>5–9 business-day lead time</li>
+                                    <li className="flex gap-2"><span className="text-[#f5b301]">✓</span>Free sample &amp; dieline check</li>
+                                    <li className="flex gap-2"><span className="text-[#f5b301]">✓</span>Company invoicing · T/T &amp; Stripe</li>
+                                    <li className="flex gap-2"><span className="text-[#f5b301]">✓</span>DHL · FedEx · UPS worldwide</li>
+                                </ul>
+                            </div>
+
                             {/* Ordering notes */}
                             <div className="rounded-2xl border border-neutral-200 bg-white p-5">
                                 <h3 className="mb-3 text-center text-base font-bold text-neutral-900">Ordering Notes</h3>
@@ -179,13 +205,6 @@ async function Detail({ params }: { params: Promise<{ locale: string; slug: stri
                                         <li key={i} className="flex gap-2"><span className="mt-0.5 text-neutral-300">{i + 1}.</span>{n}</li>
                                     ))}
                                 </ul>
-                            </div>
-
-                            {/* Need a hand */}
-                            <div className="rounded-2xl bg-neutral-900 p-5 text-white">
-                                <p className="text-sm font-semibold">Need a hand?</p>
-                                <p className="mt-1 text-sm text-neutral-300">Talk to a packaging specialist about materials, sizes and artwork.</p>
-                                <Link href="/quote" className="mt-4 block rounded-lg bg-[#ffec5a] py-2.5 text-center text-sm font-bold text-neutral-900 transition hover:brightness-95">Get a Quote</Link>
                             </div>
 
                             {/* Recommended */}

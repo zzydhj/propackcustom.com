@@ -325,6 +325,7 @@ export function ProductConfigurator({
                         placeholder={isLoggedIn ? 'Email — your confirmation is sent here' : 'Email * — we send your confirmed price here'}
                         className={`${input} sm:col-span-2`}
                     />
+                    <input name="company" autoComplete="organization" placeholder="Company name (optional — for quotes & invoicing)" className={`${input} sm:col-span-2`} />
                     <input name="recipient" placeholder="Recipient *" className={input} />
                     <input name="phone" placeholder="Phone *" className={input} />
                     <input name="country" placeholder="Country *" className={input} />
@@ -382,20 +383,21 @@ export function ProductConfigurator({
                 </div>
             )}
 
-            {/* 5. 提交订单：不收款、不登录，直接进入人工对接 */}
+            {/* 5. 提交订单：不收款、不登录，直接进入人工对接（B 端批发语境） */}
             <section id="place-order" className="scroll-mt-28">
-                <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-neutral-900"><span className="h-4 w-1.5 rounded bg-[#ffec5a]" />Submit Your Order</h3>
+                <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-neutral-900"><span className="h-4 w-1.5 rounded bg-[#ffec5a]" />Start Your Wholesale Order</h3>
                 <button type="submit" disabled={pending} className="w-full rounded-xl bg-[#ffec5a] py-4 text-base font-black text-neutral-900 transition hover:brightness-95 disabled:opacity-60">
-                    {pending ? 'Submitting…' : 'Submit order · No payment needed now'}
+                    {pending ? 'Submitting…' : 'Get My Confirmed Price · No Payment Now'}
                 </button>
                 <p className="mt-3 text-center text-sm text-neutral-600">
                     Estimated total <strong className="text-neutral-900">{config.currency} {round2(price.total).toFixed(2)}</strong>
-                    {' '}— we confirm feasibility &amp; freight, then email your payment link.
+                    {' '}— a specialist confirms feasibility &amp; freight, then emails your invoice-ready quote.
                 </p>
-                <ul className="mt-3 grid gap-1.5 text-xs text-neutral-500 sm:grid-cols-3">
-                    <li>✓ No payment required today</li>
-                    <li>✓ This price is held for 72 hours</li>
-                    <li>✓ Free artwork check before production</li>
+                <ul className="mt-3 grid gap-1.5 text-xs text-neutral-500 sm:grid-cols-2">
+                    <li>✓ Factory-direct pricing · MOQ {config.quantityTiers[0]?.min ?? 100}+</li>
+                    <li>✓ Quote held for 72 hours</li>
+                    <li>✓ Free artwork &amp; dieline check</li>
+                    <li>✓ Company invoicing &amp; T/T · Stripe</li>
                 </ul>
             </section>
         </form>

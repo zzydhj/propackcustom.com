@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import { getLocale } from 'next-intl/server';
 import { signIn, signOut } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { claimAnonymousRecords } from '@/lib/claim';
 import { redirect } from '@/navigation';
 
 export async function signInWithGoogle() {
@@ -64,6 +65,9 @@ export async function signInWithDev(_prev: DevLoginState | null, formData: FormD
   const sessionToken = crypto.randomBytes(32).toString('hex');
   const expires = new Date(Date.now() + SESSION_MAX_AGE * 1000);
   await prisma.session.create({ data: { sessionToken, userId: user.id, expires } });
+
+  // 密码登录绕过 Auth.js 的 signIn 事件，这里手动认领该邮箱的匿名订单/询价
+  await claimAnonymousRecords(user.id, user.email ?? email);
 
   const store = await cookies();
   store.set(isProd ? '__Secure-authjs.session-token' : 'authjs.session-token', sessionToken, {

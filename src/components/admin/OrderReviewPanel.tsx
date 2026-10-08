@@ -20,6 +20,7 @@ export type ReviewOrder = {
     paymentMethod: string | null;
     payUrl: string | null;
     proofFileName: string | null;
+    artworkId: string | null;
     email: string | null;
     expiresAt: string | null;
     trackingNo: string;
@@ -165,7 +166,23 @@ export function OrderReviewPanel({ order, stripeReady }: { order: ReviewOrder; s
                         </div>
                         <div className="flex gap-2">
                             <dt className="w-20 shrink-0 text-neutral-500">客户凭证</dt>
-                            <dd>{order.proofFileName ? `已上传：${order.proofFileName}` : '未上传'}</dd>
+                            <dd>
+                                {order.proofFileName ? (
+                                    <>
+                                        已上传：{order.proofFileName}{' '}
+                                        <a
+                                            href={`/api/admin/file?order=${order.id}&kind=proof`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="font-semibold text-neutral-900 underline"
+                                        >
+                                            查看
+                                        </a>
+                                    </>
+                                ) : (
+                                    '未上传'
+                                )}
+                            </dd>
                         </div>
                     </dl>
 
