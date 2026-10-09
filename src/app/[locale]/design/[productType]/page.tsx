@@ -3,6 +3,14 @@ import { setRequestLocale } from 'next-intl/server';
 import { Link } from '@/navigation';
 import { prisma } from '@/lib/prisma';
 import { DesignStudio } from '@/components/design/DesignStudio';
+import { TemplateCard } from '@/components/design/TemplateCard';
+import { Pager } from '@/components/ui/Pager';
+import {
+    TEMPLATE_PAGE_SIZE,
+    TEMPLATE_LIST_SELECT,
+    listTemplates,
+    type TemplateListItem,
+} from '@/lib/template-query';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +19,7 @@ export const metadata: Metadata = {
     description: 'Design custom packaging and labels online — pick a template, edit text and artwork in your browser, then order directly.',
 };
 
-type Props = { params: Promise<{ locale: string; productType: string }>; searchParams: Promise<{ template?: string; design?: string }> };
+type Props = { params: Promise<{ locale: string; productType: string }>; searchParams: Promise<{ template?: string; design?: string; page?: string }> };
 
 export default async function DesignPage({ params, searchParams }: Props) {
     const { locale, productType } = await params;
@@ -60,39 +68,41 @@ export default async function DesignPage({ params, searchParams }: Props) {
         );
     }
 
-    // 3) 有该类型模板：展示模板库供选择（常规网格页，非全屏）
-    const templates = await prisma.designTemplate.findMany({
-        where: { productType, active: true },
-        orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }],
-    });
-    if (templates.length > 0) {
+    // 3) 有该类型模板：展示模板库供选择（服务端分页，非全屏）——一个类型下可能挂几千个模板
+    const page = Math.max(1, Number(sp.page) || 1);
+    const list = await listTemplates<TemplateListItem>(
+        { productType, activeOnly: true, page, take: TEMPLATE_PAGE_SIZE },
+        TEMPLATE_LIST_SELECT,
+    );
+    if (list.total > 0) {
         return (
             <main className="mx-auto max-w-[1440px] px-5 py-10 2xl:px-12">
                 <h1 className="text-2xl font-black text-neutral-900 sm:text-3xl">Choose a template</h1>
                 <p className="mt-2 text-neutral-600">
-                    Start from a sized template for <span className="font-semibold text-neutral-900">{productType}</span>, or
+                    <span className="font-semibold text-neutral-900">{list.total.toLocaleString('en-US')}</span> sized templates for{' '}
+                    <span className="font-semibold text-neutral-900 capitalize">{productType}</span>, or
                     <Link href={`/design/${productType}`} className="ml-1 font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2 underline-offset-4">design from scratch</Link>.
                 </p>
-                <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                    {templates.map((tpl) => (
-                        <div
-                            key={tpl.slug}
-                            className="flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 transition hover:border-neutral-900"
-                        >
-                            <div
-                                className="mb-3 grid w-full place-items-center overflow-hidden rounded-lg bg-neutral-50 p-3 ring-1 ring-neutral-100 [&>svg]:h-auto [&>svg]:w-full"
-                                style={{ aspectRatio: `${tpl.widthMm ?? 1} / ${tpl.heightMm ?? 1}` }}
-                                dangerouslySetInnerHTML={{ __html: tpl.dielineSvg ?? '<svg viewBox="0 0 1 1"></svg>' }}
-                            />
-                            <p className="font-semibold text-neutral-900">{tpl.name}</p>
-                            <p className="mt-0.5 text-xs text-neutral-500">{tpl.widthMm ?? '—'} × {tpl.heightMm ?? '—'} mm · bleed {tpl.bleedMm}mm</p>
-                            {/* 两条路径：引导式只填字段，全屏编辑器自由摆 */}
-                            <div className="mt-3 grid grid-cols-2 gap-2">
-                                <Link href={`/customize/${tpl.slug}`} className="rounded-lg bg-neutral-900 px-3 py-2 text-center text-xs font-semibold text-white transition hover:bg-neutral-700">Quick customize</Link>
-                                <Link href={`/design/${tpl.productType}?template=${tpl.slug}`} className="rounded-lg border border-neutral-300 px-3 py-2 text-center text-xs font-medium text-neutral-700 transition hover:border-neutral-900">Open editor</Link>
-                            </div>
-                        </div>
-                    ))}
+                {list.capped && (
+                    <p className="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                        That page is too deep in the library — use the search box on the Design Studio home page to narrow it down.
+                    </p>
+                )}
+                {list.rows.length > 0 && (
+                    <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                        {list.rows.map((tpl) => (
+                            <TemplateCard key={tpl.slug} tpl={tpl} />
+                        ))}
+                    </div>
+                )}
+                <div className="mt-8">
+                    <Pager
+                        page={list.page}
+                        pages={list.pages}
+                        total={list.total}
+                        unit="templates"
+                        href={(p) => `/design/${productType}?page=${p}`}
+                    />
                 </div>
             </main>
         );

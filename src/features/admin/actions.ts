@@ -8,6 +8,7 @@ import { orderUrl, sendOrderConfirmed, sendOrderReceived, sendPaymentReceived } 
 import { createPaymentLink, stripeEnabled } from '@/lib/stripe';
 import { round2 } from '@/lib/config-engine';
 import { genOrderNo } from '@/lib/orders';
+import { ensureUniqueSlug } from '@/lib/template-query';
 
 const quoteSchema = z.object({
   id: z.string().min(1),
@@ -635,7 +636,7 @@ export async function saveProductConfig(_prev: { ok: boolean; error?: string } |
 // 三者都是「后台录入 → 前台展示 + 进 sitemap」的同一形态，用 upsert(id 有则改) + 独立 delete。
 const templateSchema = z.object({
   id: z.string().optional(),
-  slug: z.string().min(2),
+  slug: z.string().min(2).optional(), // 留空则按名称自动生成（10 万级不靠人想唯一标识）
   name: z.string().min(1),
   productType: z.string().min(1),
   category: z.string().optional(),
@@ -647,6 +648,7 @@ const templateSchema = z.object({
   sceneJson: z.string().optional(),
   active: z.boolean(),
   sort: z.coerce.number().int(),
+  tags: z.string().optional(),
 });
 
 export async function saveTemplate(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
@@ -666,6 +668,7 @@ export async function saveTemplate(_prev: { ok: boolean; error?: string } | null
     sceneJson: (formData.get('sceneJson') as string) || undefined,
     active: formData.get('active') === 'on',
     sort: (formData.get('sort') as string) || '0',
+    tags: (formData.get('tags') as string) || undefined,
   });
   if (!parsed.success) return { ok: false, error: 'invalid' };
   const d = parsed.data;
@@ -680,7 +683,8 @@ export async function saveTemplate(_prev: { ok: boolean; error?: string } | null
     }
   }
   const data = {
-    slug: d.slug,
+    // slug 统一过一层规范化 + 去重（撞车自动加 -2/-3），手工录入与批量导入共用同一规则
+    slug: await ensureUniqueSlug(d.slug?.trim() || d.name, id),
     name: d.name,
     productType: d.productType,
     category: d.category ?? null,
@@ -692,6 +696,7 @@ export async function saveTemplate(_prev: { ok: boolean; error?: string } | null
     sceneTemplate: { version: '7.4.0', objects } as never,
     active: d.active,
     sort: d.sort,
+    tags: (d.tags ?? '').split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean).slice(0, 12),
   };
   if (id) await prisma.designTemplate.update({ where: { id }, data });
   else await prisma.designTemplate.create({ data });
@@ -704,6 +709,17 @@ export async function deleteTemplate(formData: FormData) {
   await requireAdmin();
   const id = formData.get('id');
   if (typeof id === 'string') await prisma.designTemplate.delete({ where: { id } }).catch(() => { });
+  revalidatePath('/admin/templates');
+  revalidatePath('/design');
+}
+
+/** 一键上架/下架：10 万级库里不为了改一个布尔值去开表单 */
+export async function toggleTemplate(formData: FormData) {
+  await requireAdmin();
+  const id = formData.get('id');
+  const active = formData.get('active') === 'true';
+  if (typeof id === 'string')
+    await prisma.designTemplate.update({ where: { id }, data: { active: !active } }).catch(() => { });
   revalidatePath('/admin/templates');
   revalidatePath('/design');
 }

@@ -10,6 +10,7 @@ type Tpl = {
     id: string; slug: string; name: string; productType: string; category: string | null;
     widthMm: number | null; heightMm: number | null; bleedMm: number; safeAreaMm: number;
     dielineSvg: string | null; sceneTemplate: unknown; active: boolean; sort: number;
+    tags?: string[];
 };
 
 // 单个模板的编辑/新建表单。删除按钮由外层管理页提供（HTML 不允许嵌套 form）。
@@ -21,8 +22,8 @@ export function TemplateEditor({ tpl }: { tpl?: Tpl }) {
         <form action={action} className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
             {tpl && <input type="hidden" name="id" value={tpl.id} />}
             <div className="grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-1 text-sm"><span className="text-neutral-600">Slug</span>
-                    <input name="slug" defaultValue={tpl?.slug} className={input} required /></label>
+                <label className="grid gap-1 text-sm"><span className="text-neutral-600">Slug（留空则按名称自动生成并去重）</span>
+                    <input name="slug" defaultValue={tpl?.slug} placeholder="auto-from-name" className={input} /></label>
                 <label className="grid gap-1 text-sm"><span className="text-neutral-600">名称</span>
                     <input name="name" defaultValue={tpl?.name} className={input} required /></label>
                 <label className="grid gap-1 text-sm"><span className="text-neutral-600">产品类型（label/card/tag/box…）</span>
@@ -39,6 +40,8 @@ export function TemplateEditor({ tpl }: { tpl?: Tpl }) {
                     <input name="safeAreaMm" type="number" step="0.1" defaultValue={tpl?.safeAreaMm ?? 3} className={input} /></label>
                 <label className="grid gap-1 text-sm"><span className="text-neutral-600">排序</span>
                     <input name="sort" type="number" defaultValue={tpl?.sort ?? 0} className={input} /></label>
+                <label className="grid gap-1 text-sm sm:col-span-2"><span className="text-neutral-600">标签（逗号分隔，最多 12 个；用于千级以上的筛选与派生）</span>
+                    <input name="tags" defaultValue={(tpl?.tags ?? []).join(', ')} placeholder="business-card, minimal, kraft" className={input} /></label>
                 <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" name="active" defaultChecked={tpl?.active ?? true} /> 启用</label>
             </div>
             <DielineField name="dielineSvg" defaultSvg={tpl?.dielineSvg} />

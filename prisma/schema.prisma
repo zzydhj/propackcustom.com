@@ -362,7 +362,7 @@ enum DesignStatus {
 
 model DesignTemplate {
   id            String   @id @default(cuid())
-  slug          String   @unique
+  slug          String      @unique
   name          String
   productType   String // /design/[productType] 归类
   category      String?
@@ -372,13 +372,26 @@ model DesignTemplate {
   bleedMm       Float    @default(3)
   safeAreaMm    Float    @default(3)
   sceneTemplate Json? // Fabric JSON 预置内容
-  previewImage  String?
+  previewImage  String? // 缩略图：R2 对象键或直链（没图时前台回退渲染内联刀版 SVG）
   active        Boolean  @default(true)
   sort          Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
 
-  @@index([productType, active])
+  // ── 批量导入 / 10 万级规模用 ──
+  slots       Json? // 槽位定义（key/kind/labelMm/maxLength…），引导式编辑与 PSD/AI 导入共用
+  sourceKey   String? // 源文件（PSD/AI/PDF）在 R2 的对象键，归档可回溯
+  sourceHash  String? // 源文件 sha256：重复导入去重
+  widthPx     Int?
+  heightPx    Int?
+  dpi         Int?
+  tags        String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 两条列表路径各一个索引，排序字段必须跟到索引里（实测：缺 createdAt 时全类型翻页走 Seq Scan + Sort）
+  @@index([active, productType, sort, createdAt]) // 按类型筛选 + 分页
+  @@index([active, sort, createdAt])             // 不筛类型的全部列表 + 分页
+  @@index([sourceHash])
+  @@index([category])
 }
 
 // 用户设计作品：sceneJson 存 Fabric 序列化；导出成品落 R2（exportKey）
