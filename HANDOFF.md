@@ -77,10 +77,13 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 8. R2 未配置：设计器图片 dataURL、上传走文件名降级（逻辑已容错）；配 `R2_*` env 后启用直传。
 9. **影子库校验迁移基线（本期新增的可靠招）**：`.env` 的值**带双引号**，脚本里必须剥掉引号，否则 Prisma 报 P1013；连接串含 `&`，走 `npx`（cmd 转发）会被截断成 P1000 认证失败 → 用 `execFileSync(process.execPath, ['node_modules/prisma/build/index.js', ...])` 传参绕开 shell；Neon 可 `CREATE DATABASE pp_shadow_check;`（`prisma db execute --stdin`）当影子库，用完 `DROP DATABASE`。任何失败信息里会连带打印完整连接串（**含密码**）→ 输出前先脱敏。
 10. **Node 里跑 ag-psd**：读写像素要先 `initializeCanvas(createCanvas)`，本机没 node-canvas（Windows 装它要预编译二进制）→ spike 用全透明假 canvas 只验元数据链路；`writePsd` 返 **ArrayBuffer**（用 `.byteLength`，不是 `.length`）；读真实文件用 `readPsd(buf, { useImageData: false })` 可避开 canvas。PowerShell 下 `[locale]` 路径要走 Read 工具或 -LiteralPath，`Get-Content` 会把方括号当通配。
+11. **设计作品桥（`src/lib/design-bridge.ts`）两个必知坑**：
+  - 绝不能在挂载时 `removeItem`：与 `useSyncExternalStore` 的挂载后快照复核冲突（值被清→快照变→重渲染→hidden designId 约 10ms 后被卸掉），实测导致 **designId 根本提交不出去**（报价/下单都静默丢作品）。现在语义：写覆盖 + 显式清除（表单上 "Attaching your saved design #xxxx" + don’t attach，列表页黄条 + Discard）。
+  - **同标签页 `setItem/removeItem` 不触发 `storage` 事件**（HTML5 语义），所以 `saveDesignBridge/clearDesignBridge` 必须自己 `dispatchEvent(new Event('pp-design-bridge-changed'))`，`subscribeBridge` 同时监听两个事件；否则点了“不挂/丢弃”但 FormData 里仍带着旧 designId 提交。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
-> 2026-10-09 已清：首页 Design Studio 入口、迁移漂移收尾、**编辑器对象属性面板**、**后台模板刀版 SVG 拖拽上传**、**画布缩放/平移**、**印前自检出血校验**（后两项含用户临时提出的需求，均 Browser 实测通过，见 §3）、原「正文 i18n 化」（按 §1 语言策略统一英文即可）。另 `page.tsx` 的 `SectionHead` 去掉了遗留 `as any`。
+> 2026-10-09 已清：首页 Design Studio 入口、迁移漂移收尾、**编辑器对象属性面板**、**后台模板刀版 SVG 拖拽上传**、**画布缩放/平移**、**印前自检出血校验**、**快速定制页**、**移动端导航+横向溢出**、**全仓 eslint 债**（原待办表 5/6 两项；后几项含用户临时提出的需求，均 Browser 实测通过）。`npx eslint src --max-warnings 0` 首次 **0 问题**（以前 22 错 5 警）。
 
 | # | 项 | 说明 | 难度 |
 |---|---|---|---|
@@ -88,8 +91,8 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 | 2 | CMYK 色彩路线选型（**待定，未开工**） | 真转色需 ICC profile（coated/uncoated FOGRA、GRACoL），浏览器里拿不到 profile 时做 naive RGB→CMYK 属于伪科学，会误导印厂。候选：a) 只做色域告警（列出 CMYK 难还原的高饱和 RGB 色）；b) 导出时保留 RGB 并在订单里附“由印厂 RIP 转色”说明；c) 服务端接 ICC 库真转 | 选 a/c 易～难 |
 | 3 | 属性面板二期：锁定/分组/等比缩放链/多对象对齐 | 一期已上颜色字号层级对齐 | 中 |
 | 4 | 文字转曲导出（outlines） | PDF 提示已有；真转曲需字体解析 | 难 |
-| 5 | 移动端登录态横向溢出 | 390px 下 SiteNav 右侧组（My Account + Sign out）撑出 scrollWidth>clientWidth | 易 |
-| 6 | 遗留 lint 债清理 | `npx eslint src` 仍有 22 个历史 `no-explicit-any`（admin/products/account 列表页）+ ProductEditor 三个未使用组件（SpecForm/SpecAddForm/specs） | 易 |
+| 5 | 移动端登录态横向溢出 | ✅ 已修：390px 两态 scrollWidth==clientWidth；顺手补了移动端汉堡菜单（之前 lg 以下根本没有导航）并把搜索框提到 xl，1024/1167/1280 均无溢出 | — |
+| 6 | 遗留 lint 债清理 | ✅ 已清：多语言 Json 统一走 `src/lib/locale-text.ts`；删掉旧 Spec 表单死代码；桥收进 `src/lib/design-bridge.ts`；`react-hooks` 三类错误全部消除 | — |
 | 7 | 测试数据清理 | UserDesign 残留 E2E-Save-Test-Label / Untitled design×N / **QA-Props-Panel-Test**（id `cmv07mmz00000ns2cn748nz4l`）+ PPMUW… 测试订单（本轮测试的两个模板 qa-dieline-test / qa-dieline-reset 已删净） | 易 |
 | 8 | PSD 批量导入 P1+ | 见 §6A：P0 spike 已跑完，卡在“需要真实 PSD 文件 + 5 个未决问题”；P1 还要 DesignTemplate 加 slots/sourceKey/dpi 与列表分页改造 | 中大 |
 
@@ -111,7 +114,7 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 
 - 设计器：`src/components/design/{useFabricCanvas,DesignCanvas,DesignStudio,ObjectPropertiesPanel,PreflightPanel,GuideOverlay}.tsx/ts` · `src/features/design/actions.ts` · `src/app/[locale]/design/{page,[productType]/page}.tsx` · `src/app/[locale]/account/designs/page.tsx`
 - 快速定制：`src/app/[locale]/customize/[templateSlug]/page.tsx` · `src/components/design/{GuidedStudio,GuidedWorkspace,useDesignSave}.tsx/ts` · `src/components/product/DesignPendingHint.tsx`
-- 桥接：`src/components/quote/{ProductConfigurator,QuoteForm}.tsx`（localStorage `pp_order_design`）· `src/features/{order,quote}/actions.ts`（designId 落库）
+- 桥接：`src/lib/design-bridge.ts`（localStorage `pp_order_design` 唯一入出口：`useDesignBridge/saveDesignBridge/clearDesignBridge`）· `src/components/ui/AttachedDesignNote.tsx`（表单上展示挂的是哪份 + don’t attach）· `src/components/product/DesignPendingHint.tsx`（/products 列表页黄条）· `src/components/quote/{ProductConfigurator,QuoteForm}.tsx` · `src/features/{order,quote}/actions.ts`（designId 落库）
 - 导航：`src/components/site/SiteNav.tsx`（悬停区模型+mega menu）· `src/lib/megaMenu.ts`（NavGroup 数据）
 - 后台：`src/components/admin/{TemplateEditor,PostEditor,VideoEditor,OrderReviewPanel}.tsx` · `src/features/admin/actions.ts` · `src/app/[locale]/admin/{templates,blog,videos,orders}/page.tsx`
 - 计价引擎：`src/lib/config-engine.ts` · 订单领域：`src/lib/orders.ts`
