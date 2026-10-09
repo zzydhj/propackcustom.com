@@ -68,6 +68,32 @@
       }
     ]
   },
+  "DesignStudio": {
+    "eyebrow": "Free online design studio",
+    "title": "Design your packaging in the browser",
+    "subtitle": "Open a sized template, drop in your logo and artwork, check the dieline and bleed live — then send the print-ready file straight to our production line. No Illustrator, no email ping-pong.",
+    "steps": [
+      {
+        "title": "Pick a sized template",
+        "desc": "Mailer box, label, hang tag or card — real mm dimensions with dielines."
+      },
+      {
+        "title": "Design it on canvas",
+        "desc": "Add text, logos and images; undo, zoom and toggle bleed guides anytime."
+      },
+      {
+        "title": "Order or get a quote",
+        "desc": "Export vector SVG/PDF and attach the design to an order in one click."
+      }
+    ],
+    "primary": "Start designing",
+    "secondary": "Browse products",
+    "badges": [
+      "Print-ready SVG & PDF",
+      "Dieline, bleed & safe area",
+      "No design skills needed"
+    ]
+  },
   "ValueProps": {
     "title": "Why brands choose ProPack",
     "items": [

@@ -14,6 +14,7 @@ async function Home({ params }: { params: Promise<{ locale: string }> }) {
       <Announcement />
       <Hero />
       <Categories />
+      <DesignStudioBand />
       <ValueProps />
       <Popular />
       <Matrix />
@@ -114,6 +115,85 @@ function Categories() {
         ))}
       </div>
     </Section>
+  );
+}
+
+// 在线设计器入口：文案 + 步骤 + 纯 CSS/SVG 示意，不查库（保持首页可静态渲染）
+function DesignStudioBand() {
+  const t = useTranslations('DesignStudio');
+  const steps = t.raw('steps') as { title: string; desc: string }[];
+  const badges = t.raw('badges') as string[];
+  return (
+    <Section className="py-16">
+      <div className="grid items-center gap-10 rounded-3xl bg-neutral-900 p-8 lg:grid-cols-2 lg:p-12">
+        <div>
+          <span className="inline-flex items-center rounded-full bg-[#ffec5a] px-3 py-1 text-xs font-bold uppercase tracking-wide text-neutral-900">
+            {t('eyebrow')}
+          </span>
+          <h2 className="mt-5 text-3xl font-black leading-tight tracking-tight text-white sm:text-4xl">{t('title')}</h2>
+          <p className="mt-4 max-w-xl leading-relaxed text-neutral-300">{t('subtitle')}</p>
+          <ol className="mt-8 space-y-4">
+            {steps.map((s, i) => (
+              <li key={s.title} className="flex gap-4">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10 text-sm font-bold text-[#ffec5a]">
+                  {i + 1}
+                </span>
+                <div>
+                  <p className="font-semibold text-white">{s.title}</p>
+                  <p className="text-sm text-neutral-400">{s.desc}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-8 flex flex-wrap gap-4">
+            <Link href="/design" className="flex-1 rounded-lg bg-[#ffec5a] px-7 py-3.5 text-center font-semibold text-neutral-900 transition hover:bg-white sm:flex-none">
+              {t('primary')}
+            </Link>
+            <Link href="/products" className="flex-1 rounded-lg border border-white/25 px-7 py-3.5 text-center font-semibold text-white transition hover:border-white sm:flex-none">
+              {t('secondary')}
+            </Link>
+          </div>
+          <ul className="mt-6 flex flex-wrap gap-2">
+            {badges.map((b) => (
+              <li key={b} className="rounded-full border border-white/15 px-3 py-1 text-xs text-neutral-300">
+                {b}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <DesignStudioMock />
+      </div>
+    </Section>
+  );
+}
+
+// 设计器工作台示意：刀版虚线框 + 安全区 + 导出格式，全部纯 CSS，无外部图片依赖
+function DesignStudioMock() {
+  return (
+    <div className="mx-auto w-full max-w-md">
+      <div className="rounded-2xl bg-white/95 p-4 shadow-2xl">
+        <div className="flex items-center justify-between text-xs font-semibold text-neutral-400">
+          <span>Design Studio</span>
+          <span className="rounded bg-neutral-100 px-2 py-0.5">80 × 50 mm</span>
+        </div>
+        <div className="mt-3 grid place-items-center rounded-xl bg-[#f8f8f8] p-6">
+          <div className="relative h-40 w-full max-w-[280px]">
+            <div className="absolute inset-0 rounded-md border-2 border-dashed border-neutral-300" />
+            <div className="absolute inset-3 rounded-sm border border-[#ffec5a]/80" />
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-6deg] rounded-lg bg-[#ffec5a] px-4 py-2 text-lg font-black text-neutral-900 shadow">
+              YOUR LOGO
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          {['SVG', 'PDF', 'PNG'].map((f) => (
+            <span key={f} className="rounded-lg border border-neutral-200 py-1.5 text-xs font-bold text-neutral-600">
+              {f}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -322,7 +402,7 @@ function SectionHead({
         <p className="mx-auto mt-3 max-w-2xl text-neutral-500">
           {subtitle}{' '}
           {action && (
-            <Link href={action.href as any} className="font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2 underline-offset-4">
+            <Link href={action.href} className="font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2 underline-offset-4">
               {action.label}
             </Link>
           )}
