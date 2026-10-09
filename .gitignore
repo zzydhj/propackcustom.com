@@ -43,4 +43,6 @@ next-env.d.ts
 # QA screenshots
 _qa_*.png
 _verify_*.png
+verify-*.png
+verify-*.svg
 .qoder-*.png
