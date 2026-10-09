@@ -49,6 +49,8 @@ function contains(outer: IssueBox, inner: IssueBox): boolean {
 }
 
 function objectLabel(o: FabricObject): string {
+    const custom = (o as { name?: string }).name;
+    if (typeof custom === 'string' && custom.trim()) return custom.trim();
     if (o instanceof Textbox) return `Text “${(o.text ?? '').replace(/\s+/g, ' ').slice(0, 18)}”`;
     if (o instanceof FabricImage) return 'Image';
     return o.type ?? 'Object';
@@ -56,6 +58,18 @@ function objectLabel(o: FabricObject): string {
 
 /** 引导式编辑的字段：把画布对象映成「客户可以填的东西」（背景与装饰不参与） */
 export type DesignField = { index: number; kind: 'text' | 'image'; value: string };
+
+/** 图层一行：index 是 canvas.getObjects() 的下标（下→上），UI 倒序展示 */
+export type LayerInfo = { index: number; name: string; kind: string; locked: boolean; visible: boolean };
+export type LayerPatch = { name?: string; locked?: boolean; visible?: boolean };
+
+// 我们往 Fabric 对象上挂的自定义字段：必须显式加入序列化列表，否则 save/undo 快照会丢字段
+export const SCENE_PROPS = ['name', 'locked'] as const;
+
+/** 对象是否锁定：画布级 lockEditing（引导页）或单对象 locked（图层面板设的） */
+function isLocked(o: object): boolean {
+    return Boolean((o as { locked?: unknown }).locked);
+}
 
 function readFileAsDataUrl(file: File): Promise<string> {
     return new Promise((res, rej) => {
@@ -139,30 +153,54 @@ export function useFabricCanvas(opts: Opts = {}) {
     const [zoom, setZoom] = useState(1);
     const [issues, setIssues] = useState<PreflightIssue[]>([]);
     const [fields, setFields] = useState<DesignField[]>([]);
+    const [layers, setLayers] = useState<LayerInfo[]>([]);
+    const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
     const baseW = Math.round(widthMm * PX_PER_MM);
     const baseH = Math.round(heightMm * PX_PER_MM);
 
     const syncSelection = useCallback((c: Canvas) => {
-        const n = c.getActiveObjects().length;
-        setSelectionCount(n);
-        setActive(n === 1 ? readActive(c) : null);
+        const objs = c.getActiveObjects();
+        setSelectionCount(objs.length);
+        setActive(objs.length === 1 ? readActive(c) : null);
+        // 图层列表高亮用：active 对象在 getObjects() 里的下标（多选/空选为 null）
+        setActiveIndex(objs.length === 1 ? c.getObjects().indexOf(objs[0]) : null);
     }, []);
 
-    // 对象列表变了就要重算：引导页字段 + （锁定时）把对象变成不可选中、不可拖
+    // 对象列表变了就要重算：引导页字段 + 图层列表 + 把锁定对象变成不可选中、不可拖
     const refreshFields = useCallback((c: Canvas) => {
-        const list: DesignField[] = [];
+        const fieldList: DesignField[] = [];
+        const layerList: LayerInfo[] = [];
         c.getObjects().forEach((o, index) => {
-            if (o instanceof Textbox) list.push({ index, kind: 'text', value: o.text ?? '' });
-            else if (o instanceof FabricImage) list.push({ index, kind: 'image', value: '' });
+            if (o instanceof Textbox) fieldList.push({ index, kind: 'text', value: o.text ?? '' });
+            else if (o instanceof FabricImage) fieldList.push({ index, kind: 'image', value: '' });
+            layerList.push({
+                index,
+                name: objectLabel(o),
+                kind: o.type ?? 'object',
+                locked: lockEditing || isLocked(o),
+                visible: o.visible !== false,
+            });
         });
-        setFields(list);
+        setFields(fieldList);
+        setLayers(layerList);
+
+        // 锁定开关集中推导（画布级 lockEditing 或单对象 locked）：只设 selectable 不够，
+        // 键盘/手柄仍可改位置。lockEditing 下还得把已有的 active 丢掉，
+        // 否则 addImage 会让客户看到一圈蓝色手柄却拖不动（比不能拖更困惑）
+        c.getObjects().forEach((o) => {
+            const locked = lockEditing || isLocked(o);
+            o.selectable = !locked;
+            o.evented = !locked;
+            o.lockMovementX = locked;
+            o.lockMovementY = locked;
+            o.lockScalingX = locked;
+            o.lockScalingY = locked;
+            o.lockRotation = locked;
+        });
         if (lockEditing) {
-            // 锁定时不能给任何对象上选中框/控制手柄：addImage 等入口会把新对象设为 active，
-            // 客户会看到一圈蓝色手柄（看起来像“可以拖”，但拖不动 → 比不能拖更困惑）
             c.discardActiveObject();
             c.selection = false;
-            c.getObjects().forEach((o) => { o.selectable = false; o.evented = false; });
         }
     }, [lockEditing]);
 
@@ -202,7 +240,7 @@ export function useFabricCanvas(opts: Opts = {}) {
 
     const record = useCallback((c: Canvas) => {
         if (restoring.current) return;
-        const snap = JSON.stringify(c.toJSON());
+        const snap = JSON.stringify(c.toObject([...SCENE_PROPS]));
         // 丢弃 redo 分支
         const stack = history.current.stack.slice(0, history.current.idx + 1).concat(snap);
         history.current = { stack, idx: stack.length - 1 };
@@ -212,7 +250,7 @@ export function useFabricCanvas(opts: Opts = {}) {
     }, [refreshFields, runPreflight]);
 
     const resetHistory = useCallback((c: Canvas) => {
-        history.current = { stack: [JSON.stringify(c.toJSON())], idx: 0 };
+        history.current = { stack: [JSON.stringify(c.toObject([...SCENE_PROPS]))], idx: 0 };
         setHmeta({ len: 1, idx: 0 });
     }, []);
 
@@ -229,6 +267,9 @@ export function useFabricCanvas(opts: Opts = {}) {
             height: baseH,
             backgroundColor: background,
             preserveObjectStacking: true,
+            // 印刷品不能拉压失真：缩放始终等比，并把“反选键”置 null 禁掉 Shift 非等比拉伸
+            uniformScaling: true,
+            uniScaleKey: null,
         });
         canvasRef.current = canvas;
         const onAdded = () => record(canvas);
@@ -280,14 +321,16 @@ export function useFabricCanvas(opts: Opts = {}) {
         const c = canvasRef.current;
         if (!c) return;
         const boxWidth = 240;
+        // 多个连续新建时逐次错开一点，否则完全重叠、看像没反应
+        const step = (c.getObjects().length % 5) * 20;
         // 落点一律用未缩放的场景尺寸（baseW/baseH）：c.getWidth() 会被 zoom 放大，
         // 放大状态下新建的对象会落到刀版外。fabric v6/7 默认 originX/originY=center，
         // 不显式声明的话 left/top 会被当中心点→新对象左半跑出刀版
         const t = new Textbox('Double-click to edit', {
             width: boxWidth,
             originX: 'left', originY: 'center',
-            left: Math.max(0, (baseW - boxWidth) / 2),
-            top: Math.round(baseH / 2),
+            left: Math.max(0, Math.min(baseW - boxWidth, (baseW - boxWidth) / 2 + step)),
+            top: Math.round(baseH / 2) + step,
             fontFamily: 'Arial', fontSize: 28, fill: '#111111',
         });
         c.add(t);
@@ -308,10 +351,11 @@ export function useFabricCanvas(opts: Opts = {}) {
         const scale = Math.min(1, (baseW * 0.6) / w, (baseH * 0.6) / h);
         // 必须用 scaleX/scaleY：Fabric v7 里 scale 是原型方法，set({ scale }) 只是把方法
         // 遮蔽成一个数字，真正渲染的 scaleX/scaleY 仍为 1 → 大图 1:1 溢到刀版外
+        const step = (c.getObjects().length % 5) * 20; // 连续上传时错开，不要完全重叠
         img.set({
             originX: 'left', originY: 'top', scaleX: scale, scaleY: scale,
-            left: Math.max(0, (baseW - w * scale) / 2),
-            top: Math.max(0, (baseH - h * scale) / 2),
+            left: Math.max(0, Math.min(baseW - w * scale, (baseW - w * scale) / 2 + step)),
+            top: Math.max(0, Math.min(baseH - h * scale, (baseH - h * scale) / 2 + step)),
         });
         c.add(img);
         if (!lockEditing) c.setActiveObject(img);
@@ -323,6 +367,8 @@ export function useFabricCanvas(opts: Opts = {}) {
         const c = canvasRef.current;
         const o = c?.getActiveObject();
         if (c && o) {
+            // 不要在这里显式 record()：c.remove() 会同步触发 object:removed → 已经进一次历史，
+            // 再记一次会变成两条相同快照，删一个对象要按两次 Undo 才能回退
             c.remove(o);
             c.requestRenderAll();
             syncSelection(c);
@@ -334,11 +380,10 @@ export function useFabricCanvas(opts: Opts = {}) {
         const c = canvasRef.current;
         const o = c?.getObjects()[index];
         if (!c || !o) return;
-        c.remove(o);
+        c.remove(o); // 历史由 object:removed 统一记录，这里不重复 record
         c.requestRenderAll();
         syncSelection(c);
-        record(c);
-    }, [record, syncSelection]);
+    }, [syncSelection]);
 
     // 属性面板→当前选中对象：UI 只传语义（bold/italic），fabric 字段名映射留在引擎层
     const patchActive = useCallback((patch: ActivePatch) => {
@@ -412,8 +457,11 @@ export function useFabricCanvas(opts: Opts = {}) {
         return z;
     }, [baseW, baseH]);
 
-    // 导出前把视口与尺寸拍回 1:1，否则 PNG 像素与 SVG viewBox 会跟着 UI 缩放跑
-    const withFlatViewport = useCallback(<T,>(fn: (c: Canvas) => T): T | undefined => {
+    // 导出前把场景归一到「印刷该有的样子」：
+    // 1) 视口与尺寸拍回 1:1，否则 PNG 像素与 SVG viewBox 会跟着 UI 缩放跑；
+    // 2) 暂时摘掉隐藏对象——Fabric v7 的 toSVG 不跳过 visible:false，只写 style
+    //    visibility:hidden，等于客户“删掉”的内容仍留在交给印厂的矢量文件里。
+    const withExportScene = useCallback(<T,>(fn: (c: Canvas) => T): T | undefined => {
         const c = canvasRef.current;
         if (!c) return undefined;
         const prevVt = c.viewportTransform ? (c.viewportTransform.slice() as [number, number, number, number, number, number]) : null;
@@ -421,14 +469,25 @@ export function useFabricCanvas(opts: Opts = {}) {
         const prevH = c.getHeight();
         c.setDimensions({ width: baseW, height: baseH });
         c.setViewportTransform([1, 0, 0, 1, 0, 0]);
+
+        const hidden = c.getObjects().map((o, i) => ({ o, i })).filter(({ o }) => o.visible === false);
+        restoring.current = true; // 这段摆弄不能进入历史栈，也不能被算进预检
+        hidden.forEach(({ o }) => c.remove(o));
         try {
             return fn(c);
         } finally {
+            hidden.sort((a, b) => a.i - b.i).forEach(({ o, i }) => {
+                c.add(o);
+                c.moveObjectTo(o, Math.min(i, c.getObjects().length - 1));
+            });
             c.setDimensions({ width: prevW, height: prevH });
             if (prevVt) c.setViewportTransform(prevVt);
+            restoring.current = false;
             c.requestRenderAll();
+            runPreflight(c);
+            refreshFields(c);
         }
-    }, [baseW, baseH]);
+    }, [baseW, baseH, refreshFields, runPreflight]);
 
     // 引导式编辑（快速定制页）只靠这两个入口改画面，客户不接触画布结构
     const setFieldText = useCallback((index: number, text: string) => {
@@ -470,6 +529,57 @@ export function useFabricCanvas(opts: Opts = {}) {
         syncSelection(c);
     }, [syncSelection]);
 
+    // 图层面板的三个入口：不需要先选中（锁定/隐藏的对象也能改）
+    const patchLayer = useCallback((index: number, patch: LayerPatch) => {
+        const c = canvasRef.current;
+        const o = c?.getObjects()[index];
+        if (!c || !o) return;
+        if (patch.name !== undefined) o.set({ name: patch.name } as never);
+        if (patch.visible !== undefined) o.set({ visible: patch.visible });
+        if (patch.locked !== undefined) o.set({ locked: patch.locked } as never);
+        refreshFields(c);
+        c.requestRenderAll();
+        record(c);
+    }, [record, refreshFields]);
+
+    const selectLayer = useCallback((index: number) => {
+        const c = canvasRef.current;
+        const o = c?.getObjects()[index];
+        if (!c || !o || lockEditing || isLocked(o)) return; // 锁定对象不给选中框
+        c.discardActiveObject();
+        c.setActiveObject(o);
+        c.requestRenderAll();
+        syncSelection(c);
+    }, [lockEditing, syncSelection]);
+
+    /** 按索引删除：锁定/隐藏的对象没有选中态，不能走 removeActive */
+    const removeLayer = useCallback((index: number) => {
+        const c = canvasRef.current;
+        const o = c?.getObjects()[index];
+        if (!c || !o) return;
+        c.remove(o); // 同上：object:removed 会记一次历史，不能重复 record
+        c.requestRenderAll();
+        syncSelection(c);
+    }, [syncSelection]);
+
+    /** 与 layerActive 同一套 API，但按索引操作（锁定时没有选中态可用） */
+    const moveLayer = useCallback((index: number, where: LayerMode) => {
+        const c = canvasRef.current;
+        if (!c) return;
+        const objs = c.getObjects();
+        const o = objs[index];
+        if (!o) return;
+        const to = where === 'front' ? objs.length - 1
+            : where === 'back' ? 0
+                : where === 'forward' ? Math.min(objs.length - 1, index + 1)
+                    : Math.max(0, index - 1);
+        if (to === index) return;
+        c.moveObjectTo(o, to);
+        c.requestRenderAll();
+        refreshFields(c);
+        record(c);
+    }, [record, refreshFields]);
+
     const undo = useCallback(() => {
         const h = history.current;
         if (h.idx <= 0) return;
@@ -484,7 +594,8 @@ export function useFabricCanvas(opts: Opts = {}) {
         restore(h.stack[h.idx]);
     }, [restore]);
 
-    const exportJSON = useCallback(() => (canvasRef.current ? JSON.stringify(canvasRef.current.toJSON()) : '{}'), []);
+    // v7 的 toJSON() 不收参数（官方注明不支持附加属性），自定义字段必须走 toObject(propertiesToInclude)
+    const exportJSON = useCallback(() => (canvasRef.current ? JSON.stringify(canvasRef.current.toObject([...SCENE_PROPS])) : '{}'), []);
 
     const importJSON = useCallback((json: string) => {
         const c = canvasRef.current;
@@ -500,11 +611,11 @@ export function useFabricCanvas(opts: Opts = {}) {
         });
     }, [refreshFields, resetHistory, runPreflight, syncSelection]);
 
-    const exportPNG = useCallback((multiplier = 2) => withFlatViewport((c) => c.toDataURL({ format: 'png', multiplier })) ?? '', [withFlatViewport]);
+    const exportPNG = useCallback((multiplier = 2) => withExportScene((c) => c.toDataURL({ format: 'png', multiplier })) ?? '', [withExportScene]);
 
     // 导出 SVG：根节点尺寸替换为物理毫米 + viewBox，保证 Ai/Inkscape/印厂打开即真实尺寸
     const exportSVG = useCallback((): string => {
-        const svg = withFlatViewport((c) => c.toSVG());
+        const svg = withExportScene((c) => c.toSVG());
         if (!svg) return '';
         const raw = svg;
         const pxW = baseW;
@@ -520,7 +631,7 @@ export function useFabricCanvas(opts: Opts = {}) {
             if (!/viewBox=/.test(t)) t = t.replace('<svg', `<svg viewBox="0 0 ${pxW} ${pxH}"`);
             return t;
         });
-    }, [baseW, baseH, withFlatViewport]);
+    }, [baseW, baseH, withExportScene]);
 
     return {
         canvasElRef, canvasRef, ready,
@@ -531,6 +642,7 @@ export function useFabricCanvas(opts: Opts = {}) {
         zoom, applyZoom,
         issues, selectObject,
         fields, setFieldText, setFieldImage, removeObject,
+        layers, activeIndex, patchLayer, selectLayer, moveLayer, removeLayer,
         exportJSON, importJSON, exportPNG, exportSVG,
     };
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useRouter } from '@/navigation';
 import { useFabricCanvas, PX_PER_MM, ZOOM_MAX, ZOOM_MIN, type PreflightIssue } from './useFabricCanvas';
 import ObjectPropertiesPanel from './ObjectPropertiesPanel';
+import LayerList from './LayerList';
 import PreflightPanel from './PreflightPanel';
 import GuideOverlay from './GuideOverlay';
 import { useDesignSave } from './useDesignSave';
@@ -34,6 +35,7 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
         active, selectionCount, patchActive, alignActive, layerActive,
         zoom, applyZoom,
         issues, selectObject,
+        layers, activeIndex, patchLayer, selectLayer, moveLayer, removeLayer,
         exportJSON, importJSON, exportPNG, exportSVG,
     } = useFabricCanvas({ widthMm, heightMm, bleedMm, safeAreaMm });
 
@@ -233,6 +235,18 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                         onPatch={patchActive}
                         onAlign={alignActive}
                         onLayer={layerActive}
+                    />
+                </div>
+
+                {/* 图层列表：名字/显隐/锁定/叠放次序都在这，属性面板不重复造控件 */}
+                <div className="border-t border-neutral-100 pt-3">
+                    <LayerList
+                        layers={layers}
+                        activeIndex={activeIndex}
+                        onPatch={patchLayer}
+                        onSelect={selectLayer}
+                        onMove={moveLayer}
+                        onDelete={removeLayer}
                     />
                 </div>
 

@@ -41,6 +41,11 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
   2. 默认 `originX/originY=center` → 不显式声明左上角基准的话 left/top 被当中心点，新对象左半跑出刀版。
   3. 对象落点/尺寸计算必须用**未缩放的场景尺寸**（baseW/baseH），绝对不能用 `c.getWidth()/getHeight()` —— 它包含 zoom，放大状态下新建对象会落到刀版外（已修，实测 195%/100% 两次落点场景坐标逐位相同）。
 - **Tailwind 按钮激活态不得叠加同优先级冲突类**（bg-white + bg-neutral-900 会白底白字看不见图标），已拆成 base/off/on 互斥组合。
+- **图层列表 LayerList**（`src/components/design/LayerList.tsx`，只管名字/显隐/锁定/叠放次序，属性面板继续只管外观，两边不重叠）：引擎新增 `layers/activeIndex/patchLayer/selectLayer/moveLayer/removeLayer`。锁定是**双通道推导**（`lockEditing || o.locked`）并同时设 `selectable/evented/lockMovement*/lockScaling*/lockRotation`（只设 selectable 不够，键盘与手柄仍能动）；改名用非受控 input + 失焦才提交（不进无谓历史），且名字会联动 Pre-flight 文案。多选时面板只给对齐（ActiveSelection 整体移动有意义，层级/外观无意义）。缩放强制等比：`uniformScaling:true, uniScaleKey:null`（v7 里 `uniScaleKey:''` 类型不对，要 null）。
+- **导出/序列化三个必踩的坑（本轮实测发现）**：
+  1. **v7 的 `canvas.toJSON()` 不收参数**（官方注释“不支持附加属性”），自定义字段（name/locked）必须用 `canvas.toObject(['name','locked'])`；且历史快照、resetHistory、exportJSON 三处都要用同一个包含列表，否则 save/undo 会静默丢字段。
+  2. **`c.remove(o)` 会同步触发 `object:removed` → 已经 `record()` 了**，封装的删除入口（removeActive/removeObject/removeLayer）再记一次就变成两条相同快照，删一个对象要按两次 Undo。
+  3. **`toSVG()` 不跳过 `visible:false` 对象**，只写 `style="visibility: hidden"` → 客户“删掉”的内容仍会出现在交给印厂的矢量文件里。现在 `withExportScene()` 导出前暂时摘掉隐藏对象、按原索引放回（包在 `restoring` 里，不产生历史、不打乱 z-order，已实测逐位一致）。
 - **我的设计**：`/account/designs`（userId OR email 归属查询，模板尺寸批查，卡片回链编辑器）；账户侧栏入口（en/zh key）。
 - **后台看稿**：admin/orders 订单卡片「查看设计稿」深链（批量解析 `UserDesign.productType` 构造 `/design/[type]?design=id`）。
 
@@ -88,8 +93,8 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 | # | 项 | 说明 | 难度 |
 |---|---|---|---|
 | 1 | 导出成品入 R2（`UserDesign.exportKey/thumbKey` 已留） | **阻塞：`.env` 里 R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY 全为空**（只 R2_BUCKET 有值），`r2Enabled()`=false。需先去 Cloudflare 建桶 + 建 R2 API Token | 中 |
-| 2 | CMYK 色彩路线选型（**待定，未开工**） | 真转色需 ICC profile（coated/uncoated FOGRA、GRACoL），浏览器里拿不到 profile 时做 naive RGB→CMYK 属于伪科学，会误导印厂。候选：a) 只做色域告警（列出 CMYK 难还原的高饱和 RGB 色）；b) 导出时保留 RGB 并在订单里附“由印厂 RIP 转色”说明；c) 服务端接 ICC 库真转 | 选 a/c 易～难 |
-| 3 | 属性面板二期：锁定/分组/等比缩放链/多对象对齐 | 一期已上颜色字号层级对齐 | 中 |
+| 2 | CMYK 色彩路线 | ✅ 已按 a) 做完：`src/lib/color-gamut.ts` 只做色域预警（sRGB→Lab + 涂布四色上限曲线，**不做任何通道换算**）；b)/c)（附印厂 RIP 说明 / 服务端 ICC 真转）仍未做 | — |
+| 3 | 属性面板二期：锁定/显隐/图层列表/多选对齐/等比缩放 | ✅ 已完成（含改名联动 Pre-flight、name/locked 持久化、隐藏对象不进导出 SVG）；剩下：分组(group)、对象重名时无后缀区分 | 一期已完 |
 | 4 | 文字转曲导出（outlines） | PDF 提示已有；真转曲需字体解析 | 难 |
 | 5 | 移动端登录态横向溢出 | ✅ 已修：390px 两态 scrollWidth==clientWidth；顺手补了移动端汉堡菜单（之前 lg 以下根本没有导航）并把搜索框提到 xl，1024/1167/1280 均无溢出 | — |
 | 6 | 遗留 lint 债清理 | ✅ 已清：多语言 Json 统一走 `src/lib/locale-text.ts`；删掉旧 Spec 表单死代码；桥收进 `src/lib/design-bridge.ts`；`react-hooks` 三类错误全部消除 | — |

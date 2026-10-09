@@ -48,10 +48,24 @@ function toHex6(color: string | undefined): string {
 
 export default function ObjectPropertiesPanel({ active, selectionCount, onPatch, onAlign, onLayer }: Props) {
     if (selectionCount > 1) {
+        // 多选时对齐仍然可用（ActiveSelection 整体移动），但外观/层级没有意义 → 只给对齐
         return (
-            <p className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
-                {selectionCount} objects selected — select a single object to edit its properties.
-            </p>
+            <div className="space-y-2 rounded-lg border border-neutral-200 bg-white p-3">
+                <p className="text-xs text-neutral-500">
+                    <span className="font-semibold text-neutral-900">{selectionCount} objects selected</span>
+                    {' '}— align the group, or select one object to edit its properties.
+                </p>
+                <div>
+                    <p className={labelCls}>Align to dieline</p>
+                    <div className="mt-1 grid grid-cols-6 gap-1">
+                        {ALIGN_OPTIONS.map((o) => (
+                            <button key={o.mode} type="button" title={o.title} onClick={() => onAlign(o.mode)} className={cell(false)}>
+                                {o.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
         );
     }
     if (!active) {
