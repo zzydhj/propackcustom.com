@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/navigation';
 import { useFabricCanvas, PX_PER_MM } from './useFabricCanvas';
 import GuideOverlay from './GuideOverlay';
+import { FreeDesignCallout } from './FreeDesignCallout';
 import { useDesignSave } from './useDesignSave';
 import { saveDesignBridge } from '@/lib/design-bridge';
 
@@ -152,6 +153,9 @@ export default function GuidedWorkspace({
                 <Link href={`/design/${productType}?template=${templateSlug}`} className="mt-4 inline-block text-sm font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2 underline-offset-4">
                     {t('fullEditor')}
                 </Link>
+
+                {/* 引导页是最容易“我会不会做坏”的地方：把免费设计服务放在左栏底部 */}
+                <FreeDesignCallout variant="rail" className="mt-6" />
             </section>
 
             {/* 预览：同一个 Fabric 画布，但对象已锁定，客户看不到任何画布工具 */}

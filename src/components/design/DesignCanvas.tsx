@@ -7,6 +7,7 @@ import ObjectPropertiesPanel from './ObjectPropertiesPanel';
 import LayerList from './LayerList';
 import PreflightPanel from './PreflightPanel';
 import GuideOverlay from './GuideOverlay';
+import { FreeDesignCallout } from './FreeDesignCallout';
 import { useDesignSave } from './useDesignSave';
 import { saveDesignBridge } from '@/lib/design-bridge';
 
@@ -206,6 +207,9 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                     <h2 className="text-base font-bold text-neutral-900">Design Studio</h2>
                     <p className="text-xs text-neutral-500">{templateName ?? productType} · {widthMm}×{heightMm}mm</p>
                 </div>
+
+                {/* 紧凑版：不能挤掉画布高度，但要在不滚动时就能看到 */}
+                <FreeDesignCallout variant="strip" />
 
                 <div className="space-y-2">
                     <input

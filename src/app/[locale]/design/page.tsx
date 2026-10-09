@@ -10,6 +10,7 @@ import {
 } from '@/lib/template-query';
 import { Pager } from '@/components/ui/Pager';
 import { TemplateCard } from '@/components/design/TemplateCard';
+import { FreeDesignCallout } from '@/components/design/FreeDesignCallout';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +58,9 @@ export default async function DesignHomePage({
             <p className="mt-2 max-w-2xl text-neutral-600">
                 Pick a sized template, design your packaging right in the browser — text, artwork and dielines — then send it straight to order.
             </p>
+
+            {/* 免费设计服务引导：模板库是自助入口，很多人卡在这一步就走掉 */}
+            <FreeDesignCallout className="mt-6" />
 
             {/* 筛选条：类型按分组计数渲染（计数跟 q 走），两者都写进 URL，可分享可前进后退。
                 搜索框故意另起一行靠左侧：右侧有 z-40 的浮动工具栏，靠右会被它盖住导致点到“Quote”。 */}

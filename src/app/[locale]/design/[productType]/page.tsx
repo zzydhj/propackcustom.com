@@ -4,6 +4,7 @@ import { Link } from '@/navigation';
 import { prisma } from '@/lib/prisma';
 import { DesignStudio } from '@/components/design/DesignStudio';
 import { TemplateCard } from '@/components/design/TemplateCard';
+import { FreeDesignCallout } from '@/components/design/FreeDesignCallout';
 import { Pager } from '@/components/ui/Pager';
 import {
     TEMPLATE_PAGE_SIZE,
@@ -83,6 +84,7 @@ export default async function DesignPage({ params, searchParams }: Props) {
                     <span className="font-semibold text-neutral-900 capitalize">{productType}</span>, or
                     <Link href={`/design/${productType}`} className="ml-1 font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2 underline-offset-4">design from scratch</Link>.
                 </p>
+                <FreeDesignCallout className="mt-6" />
                 {list.capped && (
                     <p className="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
                         That page is too deep in the library — use the search box on the Design Studio home page to narrow it down.
