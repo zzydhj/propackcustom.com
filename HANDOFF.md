@@ -62,7 +62,7 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
   - `20261008130000_configurator_and_fk_catchup`：影子库校验时**额外查出的大漂移** —— 配置器三张表 `AttributeGroup`/`AttributeOption`/`DependencyRule` 当年完全没有任何迁移记录，且 `Artwork.userId`/`Order.userId`/`Order.addressId` 外键 init 里是 RESTRICT、现网已是 SET NULL，一并补齐。
 - **双向校验都已通过**：① 现网库 ↔ schema：`migrate diff --from-url <DIRECT_URL> --to-schema-datamodel` = No difference；② migrations 重放 ↔ schema：影子库 `migrate diff --from-migrations --shadow-database-url` = No difference（→ 全新库跑 `migrate deploy` 能还原出现在的结构）。以后每次改 schema 都建议跑一遍②。
 - **血泪教训仍成立**：Neon 库结构即时生效而部署滞后 → 旧 client SELECT 新列会 500（读库路由全挂，不读库的没事）。
-- 测试数据：库里残留 ≥4 条 `UserDesign`（E2E-Save-Test-Label、Untitled design×N）+ 若干测试订单（PPMUW…），可清。
+- 测试数据：✅ 2026-10-09 已清 —— 15 条 UserDesign（E2E-Save-Test-Label / Untitled design×N / QA-Props-Panel-Test / 本轮各回归页留下的 “… custom”）全部删除，且删除前已确认**无一条被订单/报价引用**；4 条订单（PPMUW…）与 1 条报价属演示/业务数据，**未动**，要清需人工确认。工具：`node scripts/cleanup-test-data.mjs`（默认 dry-run，加 `--apply` 真删；删前会把 Order/Quote 的 designId 置空）。
 - 模型新增：`Post`/`Video`（PublishStatus）· `DesignTemplate`/`UserDesign`（DesignStatus）· `Order.designId` · `Quote.designId`。
 
 ## 5. 环境与操作要点（踩坑记录，务必读）
@@ -93,7 +93,7 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 | 4 | 文字转曲导出（outlines） | PDF 提示已有；真转曲需字体解析 | 难 |
 | 5 | 移动端登录态横向溢出 | ✅ 已修：390px 两态 scrollWidth==clientWidth；顺手补了移动端汉堡菜单（之前 lg 以下根本没有导航）并把搜索框提到 xl，1024/1167/1280 均无溢出 | — |
 | 6 | 遗留 lint 债清理 | ✅ 已清：多语言 Json 统一走 `src/lib/locale-text.ts`；删掉旧 Spec 表单死代码；桥收进 `src/lib/design-bridge.ts`；`react-hooks` 三类错误全部消除 | — |
-| 7 | 测试数据清理 | UserDesign 残留 E2E-Save-Test-Label / Untitled design×N / **QA-Props-Panel-Test**（id `cmv07mmz00000ns2cn748nz4l`）+ PPMUW… 测试订单（本轮测试的两个模板 qa-dieline-test / qa-dieline-reset 已删净） | 易 |
+| 7 | 测试数据清理 | ✅ 已清：15 条测试 UserDesign 已删（脚本 `scripts/cleanup-test-data.mjs`，默认 dry-run）；4 订单+1 报价保留未动，要删需你确认 | — |
 | 8 | PSD 批量导入 P1+ | 见 §6A：P0 spike 已跑完，卡在“需要真实 PSD 文件 + 5 个未决问题”；P1 还要 DesignTemplate 加 slots/sourceKey/dpi 与列表分页改造 | 中大 |
 
 ## 6A. PSD 批量导入（新需求：P0 Spike 已跑完，等真实文件才能定 P1）
@@ -121,7 +121,8 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 - schema：`prisma/schema.prisma`（Order.designId L277、Quote.designId、DesignTemplate/UserDesign L~360-400、Post/Video）
 - 首页：`src/app/[locale]/page.tsx`（各段都是本文件内的展示型函数；新横幅 `DesignStudioBand` 在 `Categories` 后）· 文案 `messages/en.json`
 - 色彩：`src/lib/color-gamut.ts`（sRGB→Lab + CMYK 色域近似上限，**只预警不换算**）
-- PSD 导入 spike：`src/lib/psd-template.ts`（纯映射契约）· `scripts/psd-spike.mjs`（自检 + 跑真实 PSD）· 详见 §6b
+- PSD 导入 spike：`src/lib/psd-template.ts`（纯映射契约）· `scripts/psd-spike.mjs`（自检 + 跑真实 PSD）· 详见 §6A
+- 维护脚本：`scripts/cleanup-test-data.mjs`（测试数据清理，默认 dry-run）· `prisma/seed-templates.mjs`（模板 upsert 幂等）
 
 ## 8. 提交链（origin/main 已同步）
 
