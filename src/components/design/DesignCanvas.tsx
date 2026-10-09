@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useRouter } from '@/navigation';
-import { useFabricCanvas, PX_PER_MM } from './useFabricCanvas';
+import { useFabricCanvas, PX_PER_MM, ZOOM_MAX, ZOOM_MIN, type PreflightIssue } from './useFabricCanvas';
+import ObjectPropertiesPanel from './ObjectPropertiesPanel';
+import PreflightPanel from './PreflightPanel';
 import { saveDesign } from '@/features/design/actions';
 
 const tool = 'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 disabled:cursor-not-allowed disabled:opacity-40';
+const zoomBtn = 'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs font-semibold text-neutral-700 transition hover:border-neutral-900 disabled:cursor-not-allowed disabled:opacity-40';
 
 type Props = {
     productType: string;
@@ -26,11 +29,16 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
     const {
         canvasElRef, canvasRef, ready,
         addText, addImage, removeActive, undo, redo, canUndo, canRedo,
+        active, selectionCount, patchActive, alignActive, layerActive,
+        zoom, applyZoom,
+        issues, selectObject,
         exportJSON, importJSON, exportPNG, exportSVG,
-    } = useFabricCanvas({ widthMm, heightMm });
+    } = useFabricCanvas({ widthMm, heightMm, bleedMm, safeAreaMm });
 
     const fileRef = useRef<HTMLInputElement>(null);
     const jsonRef = useRef<HTMLInputElement>(null);
+    const scrollerRef = useRef<HTMLDivElement>(null);
+    const stageRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const [title, setTitle] = useState(name ?? 'Untitled design');
     const [savedId, setSavedId] = useState<string | undefined>(designId);
@@ -41,6 +49,73 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
     useEffect(() => {
         if (ready && initialScene) importJSON(initialScene);
     }, [ready, initialScene, importJSON]);
+
+    // 以某个屏幕锚点（默认视口中心）为不动点缩放，并补偿外层滚动位置
+    const zoomAt = useCallback((next: number, clientX?: number, clientY?: number) => {
+        const scroller = scrollerRef.current;
+        const stage = stageRef.current;
+        if (!scroller || !stage) {
+            applyZoom(next);
+            return;
+        }
+        const r0 = stage.getBoundingClientRect();
+        const ax = clientX ?? r0.left + r0.width / 2;
+        const ay = clientY ?? r0.top + r0.height / 2;
+        const sx = (ax - r0.left) / zoom;
+        const sy = (ay - r0.top) / zoom;
+        const z = applyZoom(next);
+        // setDimensions 是同步布局，可以直接拿到新矩形
+        const r1 = stage.getBoundingClientRect();
+        scroller.scrollLeft += r1.left + sx * z - ax;
+        scroller.scrollTop += r1.top + sy * z - ay;
+    }, [applyZoom, zoom]);
+
+    // 适应屏幕：留出工作区内边距，且不放大超过 100%（小模板 Fit 只会缩小）
+    const fitZoom = useCallback(() => {
+        const s = scrollerRef.current;
+        if (!s) return 1;
+        const pad = 64;
+        return Math.min(1, (s.clientWidth - pad) / (widthMm * PX_PER_MM), (s.clientHeight - pad) / (heightMm * PX_PER_MM));
+    }, [widthMm, heightMm]);
+
+    // Ctrl/⌘ + 滚轮（含触控板捏合）= 缩放；普通滚轮交给浏览器，滚动条就是平移
+    useEffect(() => {
+        const el = scrollerRef.current;
+        if (!el) return;
+        const onWheel = (e: WheelEvent) => {
+            if (!e.ctrlKey && !e.metaKey) return;
+            e.preventDefault();
+            zoomAt(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+        };
+        el.addEventListener('wheel', onWheel, { passive: false });
+        return () => el.removeEventListener('wheel', onWheel);
+    }, [zoom, zoomAt]);
+
+    // 预检列表点一行：选中该对象并把它的中心滚到工作区中间（缩放后对象可能在视口外）
+    const focusIssue = useCallback((issue: PreflightIssue) => {
+        selectObject(issue.index);
+        const s = scrollerRef.current;
+        const stage = stageRef.current;
+        if (!s || !stage) return;
+        const r = stage.getBoundingClientRect();
+        const sr = s.getBoundingClientRect();
+        s.scrollLeft += r.left + (issue.rect.left + issue.rect.width / 2) * zoom - (sr.left + sr.width / 2);
+        s.scrollTop += r.top + (issue.rect.top + issue.rect.height / 2) * zoom - (sr.top + sr.height / 2);
+    }, [selectObject, zoom]);
+
+    // 大模板（200×150mm = 1600×1200px）100% 下只能看到一个角 → 首次就绪自动 Fit 缩小
+    const fittedSizeRef = useRef('');
+    useEffect(() => {
+        if (!ready) {
+            fittedSizeRef.current = '';
+            return;
+        }
+        const key = `${widthMm}x${heightMm}`;
+        if (fittedSizeRef.current === key) return;
+        fittedSizeRef.current = key;
+        const f = fitZoom();
+        if (f < 0.995) zoomAt(f);
+    }, [ready, widthMm, heightMm, fitZoom, zoomAt]);
 
     // 键盘 Delete 删除选中；文本编辑态不拦截
     useEffect(() => {
@@ -158,6 +233,22 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                     <button type="button" className={tool} onClick={removeActive}>Delete selected</button>
                 </div>
 
+                {/* 对象属性面板：选中态与 patch 都由引擎层给出，本文件只负责摆位置 */}
+                <div className="border-t border-neutral-100 pt-3">
+                    <ObjectPropertiesPanel
+                        active={active}
+                        selectionCount={selectionCount}
+                        onPatch={patchActive}
+                        onAlign={alignActive}
+                        onLayer={layerActive}
+                    />
+                </div>
+
+                {/* 印前自检：超出出血线/跨裁切线/文字出安全区，点条目回到画布定位 */}
+                <div className="border-t border-neutral-100 pt-3">
+                    <PreflightPanel issues={issues} onFocus={focusIssue} />
+                </div>
+
                 <div className="flex gap-2 border-t border-neutral-100 pt-3">
                     <button type="button" className={`${tool} flex-1`} onClick={undo} disabled={!canUndo}>↶ Undo</button>
                     <button type="button" className={`${tool} flex-1`} onClick={redo} disabled={!canRedo}>↷ Redo</button>
@@ -202,28 +293,44 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                     </div>
                 )}
 
-                <p className="mt-auto pt-3 text-[11px] text-neutral-400">Fabric.js · millimetre units · bleed-aware output in a later milestone.</p>
+                <p className="mt-auto pt-3 text-[11px] text-neutral-400">Fabric.js · 1mm = 8px at 100% · SVG/PDF export stays at print size regardless of zoom.</p>
             </aside>
 
-            {/* 右栏：画布工作区 */}
-            <main className="relative flex flex-1 items-center justify-center overflow-auto bg-neutral-100 p-8">
-                <div className="relative w-fit rounded bg-white shadow-md">
-                    <canvas ref={canvasElRef} />
-                    {/* 刀版/出血/安全区：独立 HTML 覆盖层，不进 Fabric 对象树 → sceneJson 与导出产物保持干净 */}
-                    <div className="pointer-events-none absolute inset-0 overflow-visible">
-                        {dielineSvg && (
-                            <div className="absolute inset-0 [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: dielineSvg }} />
-                        )}
-                        {guides && bleedMm > 0 && (
-                            <div className="absolute border border-red-400/80" style={{ inset: -bleedMm * PX_PER_MM }} title={`bleed ${bleedMm}mm`} />
-                        )}
-                        {guides && safeAreaMm > 0 && (
-                            <div className="absolute border border-dashed border-blue-400/70" style={{ inset: safeAreaMm * PX_PER_MM }} title={`safe area ${safeAreaMm}mm`} />
-                        )}
+            {/* 右栏：缩放工具条 + 画布工作区（放大后靠外层滚动条平移） */}
+            <main className="flex min-w-0 flex-1 flex-col bg-neutral-100">
+                <div className="flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-4 py-2">
+                    <button type="button" title="Zoom out" className={zoomBtn} disabled={zoom <= ZOOM_MIN} onClick={() => zoomAt(zoom / 1.25)}>−</button>
+                    <span className="w-12 text-center text-xs font-semibold tabular-nums text-neutral-700">{Math.round(zoom * 100)}%</span>
+                    <button type="button" title="Zoom in" className={zoomBtn} disabled={zoom >= ZOOM_MAX} onClick={() => zoomAt(zoom * 1.25)}>+</button>
+                    <button type="button" title="Fit to screen" className={zoomBtn} onClick={() => zoomAt(fitZoom())}>Fit</button>
+                    <button type="button" title="Actual size (1mm = 8px)" className={zoomBtn} onClick={() => zoomAt(1)}>100%</button>
+                    <span className="ml-auto hidden text-xs text-neutral-400 lg:block">
+                        {widthMm}×{heightMm}mm · Ctrl/⌘ + 滚轮缩放，普通滚轮平移
+                    </span>
+                </div>
+                <div ref={scrollerRef} className="flex-1 overflow-auto">
+                    {/* min-h/min-w-full + m-auto：内容比工作区小时居中，比它大时不裁左上角 */}
+                    <div className="flex min-h-full min-w-full p-8">
+                        <div ref={stageRef} className="relative m-auto w-fit rounded bg-white shadow-md">
+                            <canvas ref={canvasElRef} />
+                            {/* 刀版/出血/安全区：独立 HTML 覆盖层，不进 Fabric 对象树 → sceneJson 与导出产物保持干净 */}
+                            {/* mm → px 要乘当前缩放，才能跟被 setZoom 放大的画布像素对齐 */}
+                            <div className="pointer-events-none absolute inset-0 overflow-visible">
+                                {dielineSvg && (
+                                    <div className="absolute inset-0 [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: dielineSvg }} />
+                                )}
+                                {guides && bleedMm > 0 && (
+                                    <div className="absolute border border-red-400/80" style={{ inset: -bleedMm * PX_PER_MM * zoom }} title={`bleed ${bleedMm}mm`} />
+                                )}
+                                {guides && safeAreaMm > 0 && (
+                                    <div className="absolute border border-dashed border-blue-400/70" style={{ inset: safeAreaMm * PX_PER_MM * zoom }} title={`safe area ${safeAreaMm}mm`} />
+                                )}
+                            </div>
+                            {!ready && (
+                                <div className="absolute inset-0 grid place-items-center text-sm text-neutral-400">Initializing canvas…</div>
+                            )}
+                        </div>
                     </div>
-                    {!ready && (
-                        <div className="absolute inset-0 grid place-items-center text-sm text-neutral-400">Initializing canvas…</div>
-                    )}
                 </div>
             </main>
         </div>
