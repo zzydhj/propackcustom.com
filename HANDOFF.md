@@ -5,11 +5,15 @@
 
 ## 1. 项目是什么
 
-B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18n 框架但 es/fr/de/pt/ar 仅核心段翻译、其余 fallback en）。
+B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-intl 框架保留但 `locales` 只开放 `en`，`messages/` 里其余 6 个语言包暂不启用也不删）。
 **定位**：后台=内部销售的中文工具；前台=海外 B 端采购。个人用户看不懂是预期行为。
-**语言策略（2026-10-09 定）**：前台就做全英文为主，新文案**只写 `messages/en.json`**；中文和其它语言包**暂不碰**，缺失 key 由 `request.ts` 的 deepMerge 自动回退英文 → 非英文页面看到英文是预期，不是缺陷，不要再花时间补翻译。
+**定位（2026-10-09 用户选定）**：① **包装/标签厂的接单工具** —— 模板是转化道具（200 个精品 + 免费设计服务），不做稿定/Canva 式海量模板站。客户要的是“你帮我把东西做对”。
+**语言策略（2026-10-09 定，同日收紧）**：
+- 新文案**只写 `messages/en.json`**；缺失 key 由 `request.ts` 的 deepMerge 自动回退英文。不要再花时间补翻译。
+- **URL 不带语言前缀**：`routing.ts` 里 `locales:['en']` + `localePrefix:'as-needed'` + **`localeDetection:false`**。最后一条是关键：默认行为会按 `Accept-Language`/`NEXT_LOCALE` cookie 把 `/design` 跳到 `/zh/design`（实测中文浏览器必现），关掉后不带前缀永远服务英文。
+- 旧前缀链接由 `src/proxy.ts` **301** 到无前缀地址（`/zh/design?q=x` → `/design?q=x`）；`LocaleSwitcher` 在 `locales.length < 2` 时自动渲染 null，加回语言时自动出现。
 
-技术栈：Next.js 16.3.5（App Router/Turbopack/Server Actions）· React 19 · Prisma 6.19 + **Neon PostgreSQL** · next-intl（`localePrefix:'as-needed'`）· NextAuth · Tailwind v4 · **Fabric.js 7.4**（自研设计器引擎）· R2（未配置）· Resend（未配置实发）· Stripe（未配 key，降级 T/T）。devDependency 里的 **ag-psd** 只服务于 PSD 导入 spike（`scripts/psd-spike.mjs`），应用运行时不引用。
+技术栈：Next.js 16.3.5（App Router/Turbopack/Server Actions）· React 19 · Prisma 6.19 + **Neon PostgreSQL** · next-intl（**单语 en**，`localePrefix:'as-needed'` + `localeDetection:false`）· NextAuth · Tailwind v4 · **Fabric.js 7.4**（自研设计器引擎）· R2（未配置）· Resend（未配置实发）· Stripe（未配 key，降级 T/T）。devDependency 里的 **ag-psd** 只服务于 PSD 导入 spike（`scripts/psd-spike.mjs`），应用运行时不引用。
 
 ## 2. 功能全景（全部已实测通过）
 
@@ -91,6 +95,7 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 13. **沙箱 PowerShell 里 `localhost` 请求会失败**（curl 与 `Invoke-WebRequest` 都拿到空状态）→ 一律用 **`http://127.0.0.1:3000`**。另外后台终端会被回收，`Invoke-WebRequest` 全挂时先确认 dev server 还在跑。
 14. **批量灌数据后要 `ANALYZE "DesignTemplate"`**：统计信息是旧的，planner 会估错行数选错计划（实测同一个查询：ANALYZE 前 Seq Scan + Sort，ANALYZE 后 Index Scan + Limit）。将来的导入器末尾要补一步 ANALYZE。
 15. **右侧浮动工具栏 `FloatingHelp`（`fixed right-0 z-40 w-16`）会盖住页面右缘控件**：实测 1167px 宽下，一个靠右的提交按钮被它盖住，点下去跳到 `/quote`。新控件不要靠右缘放（或者给容器留 64px 右栏）。
+16. **中间件里拼重定向地址不要手拼字符串**：`new URL(`/${rest}${search}`, req.url)` 在 `rest` 已以 `/` 开头时得 `//design?q=x`，被当成**协议相对 URL** → 跳到 `http://design/`（实测踩过，很隐讳）。正确写法：`new URL(rest === '' ? '/' : rest, req.url)` 再 `target.search = search`。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -127,6 +132,7 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 ## 7. 关键文件速查
 
 - 模板库（10 万级改造后）：**`src/lib/template-query.ts`**（分页/筛选/facet/深翻页上限/内容指纹/唯一 slug —— 所有列表查询只走这里）、`src/lib/template-slug.ts`（纯 slug 规则）、`src/components/ui/Pager.tsx`（前后台共用，`lang: 'en'|'zh'`）、`src/components/design/TemplateCard.tsx`（前台卡片）、`src/app/[locale]/admin/templates/page.tsx`（表格 + URL 驱动的单表单：`?q=&type=&page=&edit=&new=`）
+- 免费设计引导：`src/components/design/FreeDesignCallout.tsx`（一份文案三个密度：`banner`=/design 与 /design/[type] 顶部横条、`rail`=引导页左栏竖卡、`strip`=编辑器左工具栏紧凑条；CTA 全指 `/quote`，口径是 “Free with any order”）
 - 设计器：`src/components/design/{useFabricCanvas,DesignCanvas,DesignStudio,ObjectPropertiesPanel,PreflightPanel,GuideOverlay}.tsx/ts` · `src/features/design/actions.ts` · `src/app/[locale]/design/{page,[productType]/page}.tsx` · `src/app/[locale]/account/designs/page.tsx`
 - 快速定制：`src/app/[locale]/customize/[templateSlug]/page.tsx` · `src/components/design/{GuidedStudio,GuidedWorkspace,useDesignSave}.tsx/ts` · `src/components/product/DesignPendingHint.tsx`
 - 桥接：`src/lib/design-bridge.ts`（localStorage `pp_order_design` 唯一入出口：`useDesignBridge/saveDesignBridge/clearDesignBridge`）· `src/components/ui/AttachedDesignNote.tsx`（表单上展示挂的是哪份 + don’t attach）· `src/components/product/DesignPendingHint.tsx`（/products 列表页黄条）· `src/components/quote/{ProductConfigurator,QuoteForm}.tsx` · `src/features/{order,quote}/actions.ts`（designId 落库）
