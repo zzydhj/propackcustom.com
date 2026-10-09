@@ -19,6 +19,8 @@ type Opts = {
     background?: string;
     bleedMm?: number;
     safeAreaMm?: number;
+    /** 引导式（快速定制）页：锁定画布，客户只能填字段不能拖、不能改结构 */
+    lockEditing?: boolean;
 };
 
 export type IssueBox = { left: number; top: number; width: number; height: number };
@@ -50,6 +52,18 @@ function objectLabel(o: FabricObject): string {
     if (o instanceof Textbox) return `Text “${(o.text ?? '').replace(/\s+/g, ' ').slice(0, 18)}”`;
     if (o instanceof FabricImage) return 'Image';
     return o.type ?? 'Object';
+}
+
+/** 引导式编辑的字段：把画布对象映成「客户可以填的东西」（背景与装饰不参与） */
+export type DesignField = { index: number; kind: 'text' | 'image'; value: string };
+
+function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result));
+        r.onerror = () => rej(r.error);
+        r.readAsDataURL(file);
+    });
 }
 
 /** 属性面板要读的选中对象快照（只有单选才有；多选/空白返回 null） */
@@ -110,7 +124,7 @@ function readActive(c: Canvas): ActiveTarget | null {
 // 只在客户端 useEffect 里 new Canvas（SSR 不执行），故对本模块的顶层 fabric import 安全——
 // 前提是它只被 dynamic(ssr:false) 的组件引用（见 DesignCanvas）。
 export function useFabricCanvas(opts: Opts = {}) {
-    const { widthMm = 100, heightMm = 100, background = '#ffffff', bleedMm = 0, safeAreaMm = 0 } = opts;
+    const { widthMm = 100, heightMm = 100, background = '#ffffff', bleedMm = 0, safeAreaMm = 0, lockEditing = false } = opts;
     const canvasElRef = useRef<HTMLCanvasElement | null>(null);
     const canvasRef = useRef<Canvas | null>(null);
     const [ready, setReady] = useState(false);
@@ -124,6 +138,7 @@ export function useFabricCanvas(opts: Opts = {}) {
     const recordTimer = useRef<number | null>(null);
     const [zoom, setZoom] = useState(1);
     const [issues, setIssues] = useState<PreflightIssue[]>([]);
+    const [fields, setFields] = useState<DesignField[]>([]);
 
     const baseW = Math.round(widthMm * PX_PER_MM);
     const baseH = Math.round(heightMm * PX_PER_MM);
@@ -133,6 +148,23 @@ export function useFabricCanvas(opts: Opts = {}) {
         setSelectionCount(n);
         setActive(n === 1 ? readActive(c) : null);
     }, []);
+
+    // 对象列表变了就要重算：引导页字段 + （锁定时）把对象变成不可选中、不可拖
+    const refreshFields = useCallback((c: Canvas) => {
+        const list: DesignField[] = [];
+        c.getObjects().forEach((o, index) => {
+            if (o instanceof Textbox) list.push({ index, kind: 'text', value: o.text ?? '' });
+            else if (o instanceof FabricImage) list.push({ index, kind: 'image', value: '' });
+        });
+        setFields(list);
+        if (lockEditing) {
+            // 锁定时不能给任何对象上选中框/控制手柄：addImage 等入口会把新对象设为 active，
+            // 客户会看到一圈蓝色手柄（看起来像“可以拖”，但拖不动 → 比不能拖更困惑）
+            c.discardActiveObject();
+            c.selection = false;
+            c.getObjects().forEach((o) => { o.selectable = false; o.evented = false; });
+        }
+    }, [lockEditing]);
 
     // 印前几何校验：超出出血框=error，跨裁切线=warning，文字出安全区=warning；另跟一条色域预警
     // 三个基准框用场景 px（成品线 / 出血线 / 安全区），mm 换算与导引线 overlay 共用 PX_PER_MM
@@ -176,7 +208,8 @@ export function useFabricCanvas(opts: Opts = {}) {
         history.current = { stack, idx: stack.length - 1 };
         setHmeta({ len: stack.length, idx: stack.length - 1 });
         runPreflight(c);
-    }, [runPreflight]);
+        refreshFields(c);
+    }, [refreshFields, runPreflight]);
 
     const resetHistory = useCallback((c: Canvas) => {
         history.current = { stack: [JSON.stringify(c.toJSON())], idx: 0 };
@@ -210,6 +243,7 @@ export function useFabricCanvas(opts: Opts = {}) {
         canvas.on('selection:cleared', sync);
         resetHistory(canvas);
         runPreflight(canvas);
+        refreshFields(canvas);
         setZoom(1);
         setReady(true);
         return () => {
@@ -226,7 +260,7 @@ export function useFabricCanvas(opts: Opts = {}) {
             setSelectionCount(0);
             setReady(false);
         };
-    }, [baseW, baseH, background, record, resetHistory, runPreflight, syncSelection]);
+    }, [baseW, baseH, background, record, refreshFields, resetHistory, runPreflight, syncSelection]);
 
     const restore = useCallback((snap: string) => {
         const c = canvasRef.current;
@@ -236,10 +270,11 @@ export function useFabricCanvas(opts: Opts = {}) {
             c.renderAll();
             restoring.current = false;
             syncSelection(c);
-            runPreflight(c); // 还原期间 object:added 被抑制，预检要主动重跑
+            runPreflight(c); // 还原期间 object:added 被抑制，预检与字段要主动重跑
+            refreshFields(c);
             setHmeta({ len: history.current.stack.length, idx: history.current.idx });
         });
-    }, [runPreflight, syncSelection]);
+    }, [refreshFields, runPreflight, syncSelection]);
 
     const addText = useCallback(() => {
         const c = canvasRef.current;
@@ -256,20 +291,16 @@ export function useFabricCanvas(opts: Opts = {}) {
             fontFamily: 'Arial', fontSize: 28, fill: '#111111',
         });
         c.add(t);
-        c.setActiveObject(t);
+        // 引导页（锁定）不要自动选中：避免预览区出现控制手柄
+        if (!lockEditing) c.setActiveObject(t);
         c.requestRenderAll();
         syncSelection(c);
-    }, [baseW, baseH, syncSelection]);
+    }, [baseW, baseH, lockEditing, syncSelection]);
 
     const addImage = useCallback(async (file: File) => {
         const c = canvasRef.current;
         if (!c) return;
-        const dataUrl = await new Promise<string>((res, rej) => {
-            const r = new FileReader();
-            r.onload = () => res(String(r.result));
-            r.onerror = () => rej(r.error);
-            r.readAsDataURL(file);
-        });
+        const dataUrl = await readFileAsDataUrl(file);
         const img = await FabricImage.fromURL(dataUrl);
         const w = (img.width ?? 100);
         const h = (img.height ?? 100);
@@ -283,10 +314,10 @@ export function useFabricCanvas(opts: Opts = {}) {
             top: Math.max(0, (baseH - h * scale) / 2),
         });
         c.add(img);
-        c.setActiveObject(img);
+        if (!lockEditing) c.setActiveObject(img);
         c.requestRenderAll();
         syncSelection(c);
-    }, [baseW, baseH, syncSelection]);
+    }, [baseW, baseH, lockEditing, syncSelection]);
 
     const removeActive = useCallback(() => {
         const c = canvasRef.current;
@@ -297,6 +328,17 @@ export function useFabricCanvas(opts: Opts = {}) {
             syncSelection(c);
         }
     }, [syncSelection]);
+
+    /** 按顶层下标移除对象：引导页没有选中态，只能按字段索引拿掉客户刚加的东西 */
+    const removeObject = useCallback((index: number) => {
+        const c = canvasRef.current;
+        const o = c?.getObjects()[index];
+        if (!c || !o) return;
+        c.remove(o);
+        c.requestRenderAll();
+        syncSelection(c);
+        record(c);
+    }, [record, syncSelection]);
 
     // 属性面板→当前选中对象：UI 只传语义（bold/italic），fabric 字段名映射留在引擎层
     const patchActive = useCallback((patch: ActivePatch) => {
@@ -388,6 +430,34 @@ export function useFabricCanvas(opts: Opts = {}) {
         }
     }, [baseW, baseH]);
 
+    // 引导式编辑（快速定制页）只靠这两个入口改画面，客户不接触画布结构
+    const setFieldText = useCallback((index: number, text: string) => {
+        const c = canvasRef.current;
+        const o = c?.getObjects()[index];
+        if (!c || !(o instanceof Textbox)) return;
+        o.set({ text });
+        o.setCoords();
+        c.requestRenderAll();
+        refreshFields(c);
+        scheduleRecord(c);
+    }, [refreshFields, scheduleRecord]);
+
+    const setFieldImage = useCallback(async (index: number, file: File) => {
+        const c = canvasRef.current;
+        const o = c?.getObjects()[index];
+        if (!c || !(o instanceof FabricImage)) return;
+        const dataUrl = await readFileAsDataUrl(file);
+        // 先记住客户看到的占位尺寸，换图后按原矩形回填，避免客户一改图就撑破版面
+        const footprintW = o.getScaledWidth();
+        const footprintH = o.getScaledHeight();
+        await o.setSrc(dataUrl);
+        o.scaleToWidth(footprintW);
+        o.scaleToHeight(footprintH);
+        o.setCoords();
+        c.requestRenderAll();
+        record(c);
+    }, [record]);
+
     // 从预检列表点回画布：选中该对象（顶层下标）
     const selectObject = useCallback((index: number) => {
         const c = canvasRef.current;
@@ -426,8 +496,9 @@ export function useFabricCanvas(opts: Opts = {}) {
             resetHistory(c);
             syncSelection(c);
             runPreflight(c);
+            refreshFields(c);
         });
-    }, [resetHistory, runPreflight, syncSelection]);
+    }, [refreshFields, resetHistory, runPreflight, syncSelection]);
 
     const exportPNG = useCallback((multiplier = 2) => withFlatViewport((c) => c.toDataURL({ format: 'png', multiplier })) ?? '', [withFlatViewport]);
 
@@ -459,6 +530,7 @@ export function useFabricCanvas(opts: Opts = {}) {
         active, selectionCount, patchActive, alignActive, layerActive,
         zoom, applyZoom,
         issues, selectObject,
+        fields, setFieldText, setFieldImage, removeObject,
         exportJSON, importJSON, exportPNG, exportSVG,
     };
 }

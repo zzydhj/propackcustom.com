@@ -13,7 +13,7 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 
 ## 2. 功能全景（全部已实测通过）
 
-**前台**：产品列表/详情（配置器即时算价+阶梯折扣+附加费+父子选项树）· RFQ 报价 `/quote` · 免登录订单 `/order/[token]`（人工对接：SUBMITTED 锁价72h → 销售确认 → AWAITING_PAYMENT → 付款）· 钱包余额支付 · blog/videos SEO 模块（JSON-LD/sitemap/robots）· **Design Studio 在线设计**（详见 §3）· mega menu（左分类列+右产品图网格，悬停区模型）· **首页 Design Studio 深色转化横幅**（`page.tsx` 的 `DesignStudioBand`+`DesignStudioMock`，命名空间 `DesignStudio`，纯 CSS 示意不查库，保持首页静态可渲染）。
+**前台**：产品列表/详情（配置器即时算价+阶梯折扣+附加费+父子选项树）· RFQ 报价 `/quote` · 免登录订单 `/order/[token]`（人工对接：SUBMITTED 锁价72h → 销售确认 → AWAITING_PAYMENT → 付款）· 钱包余额支付 · blog/videos SEO 模块（JSON-LD/sitemap/robots）· **Design Studio 在线设计**（详见 §3）· **快速定制页 `/customize/[templateSlug]`**（详见 §3A）· mega menu（左分类列+右产品图网格，悬停区模型）· **首页 Design Studio 深色转化横幅**（`page.tsx` 的 `DesignStudioBand`+`DesignStudioMock`，命名空间 `DesignStudio`，纯 CSS 示意不查库，保持首页静态可渲染）。
 
 **后台（中文内部工具）**：订单（筛选/人工调价/确认收款/发货）、报价（可转订单）、产品（配置器 Builder：属性组/选项树/价格规则/依赖规则）、分类、钱包调账、**模板/博客/视频 CRUD**（模板的刀版 SVG 已支持**拖拽/选文件上传 + 实时预览 + 校验**，`src/components/admin/DielineField.tsx`：无 `<svg>`/无 viewBox/viewBox 不可解析/超 200KB 均拒绝写入 textarea，不合法内容永不会入库，因为前台会 `dangerouslySetInnerHTML` 直接渲染它）。
 
@@ -43,6 +43,16 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 - **Tailwind 按钮激活态不得叠加同优先级冲突类**（bg-white + bg-neutral-900 会白底白字看不见图标），已拆成 base/off/on 互斥组合。
 - **我的设计**：`/account/designs`（userId OR email 归属查询，模板尺寸批查，卡片回链编辑器）；账户侧栏入口（en/zh key）。
 - **后台看稿**：admin/orders 订单卡片「查看设计稿」深链（批量解析 `UserDesign.productType` 构造 `/design/[type]?design=id`）。
+
+## 3A. 快速定制页（引导式编辑，PSD 批量导入的同一条槽位模型）
+
+`/customize/[templateSlug]`（服务端页，每模板一个可分享 URL + metadata）→ `GuidedStudio`（dynamic ssr:false 容器）→ `GuidedWorkspace`（表单+预览）。与全屏编辑器共用同一个 `useFabricCanvas`，差别只在 `lockEditing: true`。
+
+- **字段从哪来**：引擎 `fields` 把顶层对象映成可填字段（Textbox→文字输入框，FabricImage→logo 替换/移除）。没改 schema、没写 slot 定义也能跑；将来 PSD 导入产出 `slots` 后直接接管同一个入口。
+- **锁定语义**（`lockEditing`）：`canvas.selection=false` + 每个对象 `selectable/evented=false` + **`discardActiveObject()`**（否则 `addImage` 会把新图设为 active，客户看到一圈蓝色手柄却拖不动，比不显示更困惑）；`addText/addImage` 在锁定时不再 `setActiveObject`。实测 upper-canvas 非透明像素 0 = 真没选中框。
+- **共享件抽取**（避免与 DesignCanvas 冗余）：`GuideOverlay.tsx`（刀版/出血/安全区，两处共用，mm→px 乘 zoom）、`useDesignSave.ts`（命名/保存/状态行；返回 `setStatus` 给导出 PDF 写进度）。
+- **出单桥**：两个 CTA 先 `save()` 再写 localStorage `pp_order_design` → `/quote`（详情页直接消费）或 `/products`。**遗留缺陷已接住**：列表页不消费桥 → 新增 `src/components/product/DesignPendingHint.tsx`（黄色条 “Your design is ready…” + Discard design），用 `useSyncExternalStore`（getServerSnapshot 返回 null）而非 effect setState，SSR/客户端无 hydration 差异。
+- 实测：字段输入→画布同步且光标不跳、锁定下无法选中/拖动（对象坐标不变）、替换 logo 保持原矩形 footprint不撑破、`/products` 5 张卡仍正常、Console 0 error。
 
 ## 4. 数据库与迁移状态（✅ 漂移已全部收尾，2026-10-09）
 
@@ -99,7 +109,8 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 
 ## 7. 关键文件速查
 
-- 设计器：`src/components/design/{useFabricCanvas,DesignCanvas,DesignStudio}.tsx` · `src/features/design/actions.ts` · `src/app/[locale]/design/{page,[productType]/page}.tsx` · `src/app/[locale]/account/designs/page.tsx`
+- 设计器：`src/components/design/{useFabricCanvas,DesignCanvas,DesignStudio,ObjectPropertiesPanel,PreflightPanel,GuideOverlay}.tsx/ts` · `src/features/design/actions.ts` · `src/app/[locale]/design/{page,[productType]/page}.tsx` · `src/app/[locale]/account/designs/page.tsx`
+- 快速定制：`src/app/[locale]/customize/[templateSlug]/page.tsx` · `src/components/design/{GuidedStudio,GuidedWorkspace,useDesignSave}.tsx/ts` · `src/components/product/DesignPendingHint.tsx`
 - 桥接：`src/components/quote/{ProductConfigurator,QuoteForm}.tsx`（localStorage `pp_order_design`）· `src/features/{order,quote}/actions.ts`（designId 落库）
 - 导航：`src/components/site/SiteNav.tsx`（悬停区模型+mega menu）· `src/lib/megaMenu.ts`（NavGroup 数据）
 - 后台：`src/components/admin/{TemplateEditor,PostEditor,VideoEditor,OrderReviewPanel}.tsx` · `src/features/admin/actions.ts` · `src/app/[locale]/admin/{templates,blog,videos,orders}/page.tsx`
@@ -120,6 +131,8 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 | `4b035d5` | `feat(design-studio)` 对象属性面板 + 画布缩放/平移 + 印前自检（含 CMYK 色域预警）+ 种子预置文字按安全区内缩 |
 | `5709fbb` | `feat(admin)` 刀版 SVG 拖拽上传/预览/校验（DielineField） |
 | `5385d94` | `fix(auth)` register 页 `useTranslations` 移入同步子组件（**早前会话遗留未提交**，非本期改动） |
+| `6a834de`+`14a0d91` | PSD 导入 spike（§6A）与文档 |
+| 本轮 | `feat(customize)` 快速定制页 `/customize/[slug]` + `GuideOverlay/useDesignSave` 抽取 + `/products` 桥提示条；修 4 处（锁定下选中框泄漏 / 桥残留无承接 / h1 文案与字段数矛盾 / 无移除 logo） |
 | docs | 本文 + `.gitignore`（排除 `verify-*` 验收产物） |
 
 历史：`3e56f5d` HANDOFF 文档 · `4614eed` 矢量导出 SVG+PDF · `26236e7` M3 刀版/出血 overlay · `d049008` 我的设计+后台看稿链+productType 持久化 · `ba152ba` 专家报价路径 · `e0b5bdf` M2a 设计→下单桥 · `14e4603` 画布放大+满宽 · `9f6edee` 前台文案英文化 · `025d4ce` M1b 作品入库 · `ab40b9e` 模板系统+后台CRUD+宽度 · `6f26735` mega menu 修复+设计入口 · `aff24c4` B端化+SEO+M0/M1。

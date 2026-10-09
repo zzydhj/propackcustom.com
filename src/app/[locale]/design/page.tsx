@@ -39,19 +39,23 @@ export default async function DesignHomePage({ params }: { params: Promise<{ loc
                         <h2 className="text-lg font-bold capitalize text-neutral-900">{type}</h2>
                         <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                             {list.map((tpl) => (
-                                <Link
+                                <div
                                     key={tpl.slug}
-                                    href={`/design/${tpl.productType}?template=${tpl.slug}`}
-                                    className="group flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 transition hover:border-neutral-900"
+                                    className="flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 transition hover:border-neutral-900"
                                 >
                                     <div
                                         className="mb-3 grid w-full place-items-center overflow-hidden rounded-lg bg-neutral-50 p-3 ring-1 ring-neutral-100 [&>svg]:h-auto [&>svg]:w-full"
                                         style={{ aspectRatio: `${tpl.widthMm ?? 1} / ${tpl.heightMm ?? 1}` }}
                                         dangerouslySetInnerHTML={{ __html: tpl.dielineSvg ?? '<svg viewBox="0 0 1 1"></svg>' }}
                                     />
-                                    <p className="font-semibold text-neutral-900 group-hover:underline">{tpl.name}</p>
+                                    <p className="font-semibold text-neutral-900">{tpl.name}</p>
                                     <p className="mt-0.5 text-xs text-neutral-500">{tpl.widthMm ?? '—'} × {tpl.heightMm ?? '—'} mm · bleed {tpl.bleedMm}mm</p>
-                                </Link>
+                                    {/* 两条路径：引导式只填字段，全屏编辑器自由摆 */}
+                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                        <Link href={`/customize/${tpl.slug}`} className="rounded-lg bg-neutral-900 px-3 py-2 text-center text-xs font-semibold text-white transition hover:bg-neutral-700">Quick customize</Link>
+                                        <Link href={`/design/${tpl.productType}?template=${tpl.slug}`} className="rounded-lg border border-neutral-300 px-3 py-2 text-center text-xs font-medium text-neutral-700 transition hover:border-neutral-900">Open editor</Link>
+                                    </div>
+                                </div>
                             ))}
                         </div>
                     </section>

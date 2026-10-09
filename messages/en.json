@@ -94,6 +94,25 @@
       "No design skills needed"
     ]
   },
+  "Customize": {
+    "eyebrow": "Quick customize",
+    "title": "Make it yours in a couple of minutes",
+    "subtitle": "Our print engineers already set the dieline, bleed and layout — just fill in your details. What you see is exactly what we print.",
+    "fieldsHeading": "Your details",
+    "fieldLabel": "Line {n}",
+    "noFields": "This template has no editable text yet — open the full editor to add some.",
+    "logoLabel": "Your logo",
+    "logoAdd": "Add your logo",
+    "logoReplace": "Replace logo",
+    "logoRemove": "Remove",
+    "logoHint": "PNG or JPG works; vector SVG prints sharpest. We place it inside the safe area automatically.",
+    "quote": "Save & get expert quote",
+    "product": "Save & order with a product",
+    "saving": "Saving…",
+    "savedHint": "Saved to your account",
+    "lockedHint": "Layout is locked — need something moved? Ask our team.",
+    "fullEditor": "Or open the full editor"
+  },
   "ValueProps": {
     "title": "Why brands choose ProPack",
     "items": [

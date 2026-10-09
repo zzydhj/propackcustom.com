@@ -1,6 +1,7 @@
 import { setRequestLocale } from 'next-intl/server';
 import { Link } from '@/navigation';
 import { prisma } from '@/lib/prisma';
+import DesignPendingHint from '@/components/product/DesignPendingHint';
 
 export default function ProductsPage({ params }: { params: Promise<{ locale: string }> }) {
     return <List params={params} />;
@@ -28,6 +29,7 @@ async function List({ params }: { params: Promise<{ locale: string }> }) {
         <main className="mx-auto max-w-[1440px] px-5 py-10 2xl:px-12">
             <h1 className="mb-2 text-3xl font-black text-neutral-900">Products</h1>
             <p className="mb-8 text-neutral-500">Configure size, material and finishes — get an instant factory-direct price.</p>
+            <DesignPendingHint />
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {rows.map((p) => (
                     <Link key={p.slug} href={`/products/${p.slug}`} className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white transition hover:shadow-lg">

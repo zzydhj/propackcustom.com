@@ -5,7 +5,8 @@ import { Link, useRouter } from '@/navigation';
 import { useFabricCanvas, PX_PER_MM, ZOOM_MAX, ZOOM_MIN, type PreflightIssue } from './useFabricCanvas';
 import ObjectPropertiesPanel from './ObjectPropertiesPanel';
 import PreflightPanel from './PreflightPanel';
-import { saveDesign } from '@/features/design/actions';
+import GuideOverlay from './GuideOverlay';
+import { useDesignSave } from './useDesignSave';
 
 const tool = 'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 disabled:cursor-not-allowed disabled:opacity-40';
 const zoomBtn = 'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs font-semibold text-neutral-700 transition hover:border-neutral-900 disabled:cursor-not-allowed disabled:opacity-40';
@@ -40,11 +41,10 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
     const scrollerRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
-    const [title, setTitle] = useState(name ?? 'Untitled design');
-    const [savedId, setSavedId] = useState<string | undefined>(designId);
-    const [saving, setSaving] = useState(false);
-    const [msg, setMsg] = useState('');
     const [guides, setGuides] = useState(true);
+    const { title, setTitle, savedId, saving, msg, setStatus, save } = useDesignSave({
+        productType, designId, templateId, name, ready, exportJSON,
+    });
 
     useEffect(() => {
         if (ready && initialScene) importJSON(initialScene);
@@ -133,18 +133,9 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
     }, [canvasRef, removeActive]);
 
     async function handleSave() {
-        if (!ready) return;
-        setSaving(true);
-        setMsg('');
-        const res = await saveDesign({ id: savedId, sceneJson: exportJSON(), name: title, templateId: templateId ?? undefined, productType });
-        setSaving(false);
-        if (res.ok && res.id) {
-            setSavedId(res.id);
-            setMsg('Saved ✓');
-            router.replace(`/design/${productType}?design=${res.id}`);
-        } else {
-            setMsg(res.error === 'forbidden' ? 'You cannot save this design' : 'Save failed');
-        }
+        const id = await save();
+        // 保存后把作品 id 写进地址，刷新/回去还能接着改同一份
+        if (id) router.replace(`/design/${productType}?design=${id}`);
     }
 
     const downloadJSON = () => {
@@ -182,7 +173,7 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
     // 浏览器端直出 mm 精确 PDF（jspdf+svg2pdf 动态加载，不进首屏 bundle）
     async function downloadPDF() {
         if (!ready) return;
-        setMsg('Rendering PDF…');
+        setStatus('Rendering PDF…');
         try {
             const [{ jsPDF }] = await Promise.all([import('jspdf'), import('svg2pdf.js')]);
             const svg = exportSVG();
@@ -192,10 +183,10 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
             const doc = new jsPDF({ orientation: widthMm >= heightMm ? 'landscape' : 'portrait', unit: 'mm', format: [widthMm, heightMm] });
             await (doc as unknown as { svg(node: unknown, opts: { x: number; y: number; width: number; height: number }): Promise<unknown> }).svg(svgEl, { x: 0, y: 0, width: widthMm, height: heightMm });
             (doc as unknown as { save(name: string): void }).save('design.pdf');
-            setMsg('PDF saved ✓ — outline fonts before printing');
+            setStatus('PDF saved ✓ — outline fonts before printing');
         } catch (err) {
             console.error('[design] PDF export failed', err);
-            setMsg('PDF render failed — use Export SVG instead');
+            setStatus('PDF render failed — use Export SVG instead');
         }
     }
 
@@ -313,19 +304,7 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                     <div className="flex min-h-full min-w-full p-8">
                         <div ref={stageRef} className="relative m-auto w-fit rounded bg-white shadow-md">
                             <canvas ref={canvasElRef} />
-                            {/* 刀版/出血/安全区：独立 HTML 覆盖层，不进 Fabric 对象树 → sceneJson 与导出产物保持干净 */}
-                            {/* mm → px 要乘当前缩放，才能跟被 setZoom 放大的画布像素对齐 */}
-                            <div className="pointer-events-none absolute inset-0 overflow-visible">
-                                {dielineSvg && (
-                                    <div className="absolute inset-0 [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: dielineSvg }} />
-                                )}
-                                {guides && bleedMm > 0 && (
-                                    <div className="absolute border border-red-400/80" style={{ inset: -bleedMm * PX_PER_MM * zoom }} title={`bleed ${bleedMm}mm`} />
-                                )}
-                                {guides && safeAreaMm > 0 && (
-                                    <div className="absolute border border-dashed border-blue-400/70" style={{ inset: safeAreaMm * PX_PER_MM * zoom }} title={`safe area ${safeAreaMm}mm`} />
-                                )}
-                            </div>
+                            <GuideOverlay dielineSvg={dielineSvg} bleedMm={bleedMm} safeAreaMm={safeAreaMm} zoom={zoom} showGuides={guides} />
                             {!ready && (
                                 <div className="absolute inset-0 grid place-items-center text-sm text-neutral-400">Initializing canvas…</div>
                             )}
