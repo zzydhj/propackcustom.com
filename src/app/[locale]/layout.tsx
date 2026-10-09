@@ -29,7 +29,8 @@ export default async function LocaleLayout({
   setRequestLocale(locale);
 
   const messages = await getMessages();
-  const dir = locale === 'ar' ? 'rtl' : 'ltr';
+  // 站点只开放英文，永远 ltr；将来往 routing.locales 加回 ar 这类 RTL 语言时再按 locale 判方向
+  const dir = 'ltr';
 
   return (
     <html lang={locale} data-scroll-behavior="smooth" dir={dir} suppressHydrationWarning>

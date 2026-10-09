@@ -2,22 +2,27 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import { usePathname, useRouter } from '@/navigation';
+import { routing } from '@/i18n/routing';
 
-const LOCALES: { code: string; label: string }[] = [
-  { code: 'en', label: 'English' },
-  { code: 'es', label: 'Español' },
-  { code: 'de', label: 'Deutsch' },
-  { code: 'fr', label: 'Français' },
-  { code: 'zh', label: '中文' },
-  { code: 'pt', label: 'Português' },
-  { code: 'ar', label: 'العربية' },
-];
+// 选项直接由 routing.locales 推导（不再手写一份清单，避免与实际开放语言不一致）；名字用母语自称
+const LABELS: Record<string, string> = {
+  en: 'English',
+  es: 'Español',
+  de: 'Deutsch',
+  fr: 'Français',
+  zh: '中文',
+  pt: 'Português',
+  ar: 'العربية',
+};
 
 export function LocaleSwitcher() {
   const locale = useLocale();
   const t = useTranslations('Common');
   const router = useRouter();
   const pathname = usePathname();
+
+  // 单语言站点摆语言下拉是误导；将来往 routing.locales 里加回一种语言，它会自动出现
+  if (routing.locales.length < 2) return null;
 
   return (
     <label className="flex items-center gap-1 text-sm text-neutral-600">
@@ -32,9 +37,9 @@ export function LocaleSwitcher() {
         onChange={(e) => router.replace(pathname, { locale: e.target.value })}
         className="cursor-pointer rounded-md border border-neutral-200 bg-white py-1 pl-1 pr-6 text-sm font-medium text-neutral-800 outline-none hover:border-neutral-400"
       >
-        {LOCALES.map((l) => (
-          <option key={l.code} value={l.code}>
-            {l.label}
+        {routing.locales.map((l) => (
+          <option key={l} value={l}>
+            {LABELS[l] ?? l}
           </option>
         ))}
       </select>
