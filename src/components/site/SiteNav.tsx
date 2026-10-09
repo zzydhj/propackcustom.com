@@ -19,18 +19,22 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
     const brand = useTranslations('Brand');
     const [open, setOpen] = useState(false);
     const [active, setActive] = useState(0);
+    // 移动端菜单：lg 以下整条桌面导航不渲染，必须有个收纳入口，
+    // 否则手机上只剩 Logo + 账户按钮（右侧那组在 390px 还会撑出横向滚动条）
+    const [menu, setMenu] = useState(false);
 
     const links = [
         { href: '/quote', label: t('quote') },
         { href: '/design/label', label: t('design') },
         { href: '/about', label: t('about') },
     ];
+    const mobileLinks = [{ href: '/', label: t('home') }, { href: '/products', label: t('products') }, ...links];
 
     const current = groups[active];
 
     return (
         <header className="sticky top-0 z-50 w-full border-b border-neutral-100 bg-white">
-            <div className="container-site flex h-[72px] items-center gap-8">
+            <div className="container-site flex h-[72px] items-center gap-4 lg:gap-8">
                 {/* Logo */}
                 <Link href="/" className="flex shrink-0 items-center gap-2">
                     <span className="grid h-9 w-9 place-items-center rounded-md bg-[#ffec5a] font-black text-neutral-900">P</span>
@@ -145,7 +149,9 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
 
                 {/* Right tools */}
                 <div className="ml-auto flex items-center gap-3">
-                    <div className="hidden items-center rounded-full border border-neutral-200 px-3 focus-within:border-neutral-900 md:flex">
+                    {/* 搜索框是装饰性入口（无提交逻辑），只到 xl+ 才占位：
+                        否则 lg 断点带（1024～1174）右组会把头部撑出横向滚动条 */}
+                    <div className="hidden items-center rounded-full border border-neutral-200 px-3 focus-within:border-neutral-900 xl:flex">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-neutral-400" aria-hidden>
                             <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
                             <path d="m20 20-3-3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -161,7 +167,7 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
                     </div>
 
                     {signedIn ? (
-                        <div className="flex items-center gap-2">
+                        <div className="hidden items-center gap-2 lg:flex">
                             <Link href="/account" className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100">
                                 {t('account')}
                             </Link>
@@ -173,16 +179,70 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
                         </div>
                     ) : (
                         <>
-                            <Link href="/login" className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100">
+                            <Link href="/login" className="hidden rounded-md px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 lg:block">
                                 {t('login')}
                             </Link>
-                            <Link href="/register" className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-neutral-700">
+                            <Link href="/register" className="hidden rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-neutral-700 lg:block">
                                 {t('register')}
                             </Link>
                         </>
                     )}
+
+                    {/* 移动端汉堡开关（lg 以上隐藏） */}
+                    <button
+                        type="button"
+                        aria-label={t('menu')} aria-expanded={menu}
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-neutral-200 text-neutral-700 transition hover:border-neutral-900 lg:hidden"
+                        onClick={() => { setMenu((v) => !v); setOpen(false); }}
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                            {menu
+                                ? <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                : <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
+                        </svg>
+                    </button>
                 </div>
             </div>
+
+            {/* 移动端面板：导航与账户动作全部收在这里，不再挤在一行 */}
+            {menu && (
+                <div className="border-t border-neutral-100 bg-white lg:hidden">
+                    <nav className="container-site grid gap-1 py-3">
+                        {mobileLinks.map((l) => (
+                            <Link key={l.href} href={l.href as never} onClick={() => setMenu(false)} className="rounded-lg px-3 py-2.5 text-[15px] font-medium text-neutral-700 hover:bg-neutral-50">
+                                {l.label}
+                            </Link>
+                        ))}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-3">
+                            {signedIn ? (
+                                <>
+                                    <Link href="/account" onClick={() => setMenu(false)} className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700">
+                                        {t('account')}
+                                    </Link>
+                                    <form action={signOutAction}>
+                                        <button className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700">
+                                            {t('signOut')}
+                                        </button>
+                                    </form>
+                                </>
+                            ) : (
+                                <>
+                                    <Link href="/login" onClick={() => setMenu(false)} className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700">
+                                        {t('login')}
+                                    </Link>
+                                    <Link href="/register" onClick={() => setMenu(false)} className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">
+                                        {t('register')}
+                                    </Link>
+                                </>
+                            )}
+                            {/* 语言切换在头部是 sm 以上才显示，移动端靠这里拿到 */}
+                            <div className="ml-auto">
+                                <LocaleSwitcher />
+                            </div>
+                        </div>
+                    </nav>
+                </div>
+            )}
         </header>
     );
 }

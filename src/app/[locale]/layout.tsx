@@ -32,7 +32,7 @@ export default async function LocaleLayout({
   const dir = locale === 'ar' ? 'rtl' : 'ltr';
 
   return (
-    <html lang={locale} dir={dir} suppressHydrationWarning>
+    <html lang={locale} data-scroll-behavior="smooth" dir={dir} suppressHydrationWarning>
       <body className="antialiased">
         <NextIntlClientProvider messages={messages}>
           <SiteChrome header={<Header />} footer={<Footer />}>{children}</SiteChrome>
