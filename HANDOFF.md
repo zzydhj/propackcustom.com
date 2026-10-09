@@ -61,14 +61,16 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 
 ## 4. 数据库与迁移状态（✅ 漂移已全部收尾，2026-10-09）
 
-- 正式 migrations 共 **12 个**，`prisma migrate status` = `Database schema is up to date!`。
-- 本期新增两个收尾迁移（内容均为现网已存在的结构，用 `migrate resolve --applied` 登记，**不要**再 deploy 到现网）：
+- 正式 migrations 共 **14 个**，`prisma migrate status` = `Database schema is up to date!`。本期新增两个收尾迁移（内容均为现网已存在的结构，用 `migrate resolve --applied` 登记，**不要**再 deploy 到现网）：
   - `20261008120000_design_soft_ref_fields`：`Quote.designId` + `UserDesign.productType`（原走 db push 的两个软引用字段）。
   - `20261008130000_configurator_and_fk_catchup`：影子库校验时**额外查出的大漂移** —— 配置器三张表 `AttributeGroup`/`AttributeOption`/`DependencyRule` 当年完全没有任何迁移记录，且 `Artwork.userId`/`Order.userId`/`Order.addressId` 外键 init 里是 RESTRICT、现网已是 SET NULL，一并补齐。
 - **双向校验都已通过**：① 现网库 ↔ schema：`migrate diff --from-url <DIRECT_URL> --to-schema-datamodel` = No difference；② migrations 重放 ↔ schema：影子库 `migrate diff --from-migrations --shadow-database-url` = No difference（→ 全新库跑 `migrate deploy` 能还原出现在的结构）。以后每次改 schema 都建议跑一遍②。
 - **血泪教训仍成立**：Neon 库结构即时生效而部署滞后 → 旧 client SELECT 新列会 500（读库路由全挂，不读库的没事）。
 - 测试数据：✅ 2026-10-09 已清 —— 15 条 UserDesign（E2E-Save-Test-Label / Untitled design×N / QA-Props-Panel-Test / 本轮各回归页留下的 “… custom”）全部删除，且删除前已确认**无一条被订单/报价引用**；4 条订单（PPMUW…）与 1 条报价属演示/业务数据，**未动**，要清需人工确认。工具：`node scripts/cleanup-test-data.mjs`（默认 dry-run，加 `--apply` 真删；删前会把 Order/Quote 的 designId 置空）。
 - 模型新增：`Post`/`Video`（PublishStatus）· `DesignTemplate`/`UserDesign`（DesignStatus）· `Order.designId` · `Quote.designId`。
+- **2026-10-09 模板库规模改造**（走正规 `migrate dev`，不是 resolve，新库 deploy 会真跑）：
+  - `20261009132421_template_library_scale`：`DesignTemplate` 加 `slots`/`sourceKey`/`sourceHash`/`widthPx`/`heightPx`/`dpi`/`tags`。
+  - `20261009142441_template_scale_indexes`：索引换成 `(active, productType, sort, createdAt)` + `(active, sort, createdAt)`（**排序字段必须进索引**，否则全类型翻页走 Seq Scan + Sort，实测过）。
 
 ## 5. 环境与操作要点（踩坑记录，务必读）
 
@@ -85,6 +87,10 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 11. **设计作品桥（`src/lib/design-bridge.ts`）两个必知坑**：
   - 绝不能在挂载时 `removeItem`：与 `useSyncExternalStore` 的挂载后快照复核冲突（值被清→快照变→重渲染→hidden designId 约 10ms 后被卸掉），实测导致 **designId 根本提交不出去**（报价/下单都静默丢作品）。现在语义：写覆盖 + 显式清除（表单上 "Attaching your saved design #xxxx" + don’t attach，列表页黄条 + Discard）。
   - **同标签页 `setItem/removeItem` 不触发 `storage` 事件**（HTML5 语义），所以 `saveDesignBridge/clearDesignBridge` 必须自己 `dispatchEvent(new Event('pp-design-bridge-changed'))`，`subscribeBridge` 同时监听两个事件；否则点了“不挂/丢弃”但 FormData 里仍带着旧 designId 提交。
+12. **`DIRECT_URL`（Neon 直连端点）从本机可能不可达**（migrate 一直 P1001，而池化端点 `DATABASE_URL` 正常）→ 跑迁移前在当前 shell 里临时覆盖：`$env:DIRECT_URL = (((Get-Content .env | Select-String -Pattern '^DATABASE_URL=').Line -replace '^DATABASE_URL=','') -replace '"','')`（不回显凭证）。进程环境变量优先于 `.env`，Prisma 会用它。
+13. **沙箱 PowerShell 里 `localhost` 请求会失败**（curl 与 `Invoke-WebRequest` 都拿到空状态）→ 一律用 **`http://127.0.0.1:3000`**。另外后台终端会被回收，`Invoke-WebRequest` 全挂时先确认 dev server 还在跑。
+14. **批量灌数据后要 `ANALYZE "DesignTemplate"`**：统计信息是旧的，planner 会估错行数选错计划（实测同一个查询：ANALYZE 前 Seq Scan + Sort，ANALYZE 后 Index Scan + Limit）。将来的导入器末尾要补一步 ANALYZE。
+15. **右侧浮动工具栏 `FloatingHelp`（`fixed right-0 z-40 w-16`）会盖住页面右缘控件**：实测 1167px 宽下，一个靠右的提交按钮被它盖住，点下去跳到 `/quote`。新控件不要靠右缘放（或者给容器留 64px 右栏）。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -99,9 +105,10 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 | 5 | 移动端登录态横向溢出 | ✅ 已修：390px 两态 scrollWidth==clientWidth；顺手补了移动端汉堡菜单（之前 lg 以下根本没有导航）并把搜索框提到 xl，1024/1167/1280 均无溢出 | — |
 | 6 | 遗留 lint 债清理 | ✅ 已清：多语言 Json 统一走 `src/lib/locale-text.ts`；删掉旧 Spec 表单死代码；桥收进 `src/lib/design-bridge.ts`；`react-hooks` 三类错误全部消除 | — |
 | 7 | 测试数据清理 | ✅ 已清：15 条测试 UserDesign 已删（脚本 `scripts/cleanup-test-data.mjs`，默认 dry-run）；4 订单+1 报价保留未动，要删需你确认 | — |
-| 8 | PSD 批量导入 P1+ | 见 §6A：P0 spike 已跑完，卡在“需要真实 PSD 文件 + 5 个未决问题”；P1 还要 DesignTemplate 加 slots/sourceKey/dpi 与列表分页改造 | 中大 |
+| 8 | PSD/AI 批量导入 P1+ | 见 §6A：P0 spike 已跑完，卡在“需要真实源文件 + 5 个未决问题”；**它的前置（表字段 + 分页列表）已清掉**，剩下的是解析器 + 导入作业 + 审核台 | 中大 |
+| 9 | 模板库 10 万级规模改造 | ✅ 已完成（2026-10-09）：字段 + 索引 + 查询层（分页/facet/去重 slug/内容指纹）+ 后台表格化（一行一表单→零个常驻表单）+ 前台分页搜索；20k 行实测执行计划已校正 | — |
 
-## 6A. PSD 批量导入（新需求：P0 Spike 已跑完，等真实文件才能定 P1）
+## 6A. PSD / AI 批量导入（P0 Spike 已跑完；模板库前置已做完，等真实源文件才能定 P1）
 
 需求：几百上千个 PSD（名片/贴纸/吊牌…）→ 自动变成云端可二次编辑的模板。**产品形态已定：背景锁定 + 少量命名槽位**（Printful/Canva 式），不是全图层可编辑。
 
@@ -114,9 +121,12 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 - **还没验证（必须拿设计产线的真实 PSD）**：Photoshop 存的引擎数据/智能对象/矢量蒙版/CMYK/专色承刀版；以及背景合成图切片（需 worker：带 canvas 的 Node / headless Chrome / Python psd-tools）。
 - **未决问题（阻塞 P1 开工）**：① PSD 由谁产、能否定规范；② 客户要改什么（只文字+logo？有无产品实拍图）；③ 字体策略（只用托管集 / 买授权子集化 / 允许上传）；④ 模板页要不要做 SEO；⑤ 先内部上架还是公开市场。
 - **语义缺口（开工前必须定）**：当前设计器画布尺寸=trim，而带出血的 PSD 背景比 trim 大；Fabric 导出只覆盖画布本身 → 要么把导出改成覆盖含出血的矩形，要么让 PSD 画布=trim 并接受“背景无出血”。选错会导致印厂拒收。
+- **AI/PDF 路线（用户 2026-10-09 补充：源文件可能是 .ai）——已建议优先做这条**：现代 `.ai` 默认内嵌 PDF 兼容流，Illustrator 图层→PDF **OCG（可选内容组）**，可分离背景/文字/刀版；文字是矢量可直提（字体名/字号/坐标），单位 pt 换 mm 比 PSD 反算更准，刀版本身就是矢量路径，且交付印厂不丢矢量。代价：只有开了“创建 PDF 兼容文件”的能读，老 AI8/9 二进制无解。**需拿真实 .ai/.pdf 样本跟 .psd 一起跑 spike 才能定。**
+- **已完成的前置**：`DesignTemplate` 已有 `slots`/`sourceKey`/`sourceHash`/`widthPx`/`heightPx`/`dpi`/`tags`；列表已服务端分页（后台 25/前台 24）；`sourceHashOf()` 做内容去重、`ensureUniqueSlug()` 做 slug 撞车避让；`previewImage` 已接进卡片（有图用图，无图回退内联刀版 SVG）。导入器只需往上灌数据。
 
 ## 7. 关键文件速查
 
+- 模板库（10 万级改造后）：**`src/lib/template-query.ts`**（分页/筛选/facet/深翻页上限/内容指纹/唯一 slug —— 所有列表查询只走这里）、`src/lib/template-slug.ts`（纯 slug 规则）、`src/components/ui/Pager.tsx`（前后台共用，`lang: 'en'|'zh'`）、`src/components/design/TemplateCard.tsx`（前台卡片）、`src/app/[locale]/admin/templates/page.tsx`（表格 + URL 驱动的单表单：`?q=&type=&page=&edit=&new=`）
 - 设计器：`src/components/design/{useFabricCanvas,DesignCanvas,DesignStudio,ObjectPropertiesPanel,PreflightPanel,GuideOverlay}.tsx/ts` · `src/features/design/actions.ts` · `src/app/[locale]/design/{page,[productType]/page}.tsx` · `src/app/[locale]/account/designs/page.tsx`
 - 快速定制：`src/app/[locale]/customize/[templateSlug]/page.tsx` · `src/components/design/{GuidedStudio,GuidedWorkspace,useDesignSave}.tsx/ts` · `src/components/product/DesignPendingHint.tsx`
 - 桥接：`src/lib/design-bridge.ts`（localStorage `pp_order_design` 唯一入出口：`useDesignBridge/saveDesignBridge/clearDesignBridge`）· `src/components/ui/AttachedDesignNote.tsx`（表单上展示挂的是哪份 + don’t attach）· `src/components/product/DesignPendingHint.tsx`（/products 列表页黄条）· `src/components/quote/{ProductConfigurator,QuoteForm}.tsx` · `src/features/{order,quote}/actions.ts`（designId 落库）
@@ -127,7 +137,7 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 - 首页：`src/app/[locale]/page.tsx`（各段都是本文件内的展示型函数；新横幅 `DesignStudioBand` 在 `Categories` 后）· 文案 `messages/en.json`
 - 色彩：`src/lib/color-gamut.ts`（sRGB→Lab + CMYK 色域近似上限，**只预警不换算**）
 - PSD 导入 spike：`src/lib/psd-template.ts`（纯映射契约）· `scripts/psd-spike.mjs`（自检 + 跑真实 PSD）· 详见 §6A
-- 维护脚本：`scripts/cleanup-test-data.mjs`（测试数据清理，默认 dry-run）· `prisma/seed-templates.mjs`（模板 upsert 幂等）
+- 维护脚本：`scripts/cleanup-test-data.mjs`（测试数据清理，默认 dry-run）· `scripts/template-scale-check.mjs`（模板库规模压测：灌 N 条临时模板→量查询+看执行计划→自清，`--rows=20000`）· `prisma/seed-templates.mjs`（模板 upsert 幂等）
 
 ## 8. 提交链（origin/main 已同步）
 
