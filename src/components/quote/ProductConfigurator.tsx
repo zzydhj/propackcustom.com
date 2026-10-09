@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useActionState } from 'react';
 import { Link } from '@/navigation';
 import { createProductOrder, type CheckoutState } from '@/features/order/actions';
 import { R2FileUpload } from '@/components/ui/R2FileUpload';
+import { useDesignBridge } from '@/lib/design-bridge';
+import { AttachedDesignNote } from '@/components/ui/AttachedDesignNote';
 import {
     computeConfigState, computeConfigPrice, initialSelections, round2,
     type ProductConfig, type ConfigState, type Selections, type Dimension, type CfgGroup, type CfgOption,
@@ -126,13 +128,8 @@ export function ProductConfigurator({
     const [artworkId, setArtworkId] = useState('');
     // R2 未配置 / 网络异常时降级为「只记文件名」，绝不因此卡住下单
     const [uploadFallback, setUploadFallback] = useState(false);
-    const [designId, setDesignId] = useState('');
-
-    // M2a：从 localStorage 读取设计器传来的 designId（一次性，读完即清）
-    useEffect(() => {
-        const d = localStorage.getItem('pp_order_design');
-        if (d) { setDesignId(d); localStorage.removeItem('pp_order_design'); }
-    }, []);
+    // M2a：设计器传过来的作品 id（一次性桥，读取即清）
+    const designId = useDesignBridge();
 
     const [state, formAction, pending] = useActionState<CheckoutState | null, FormData>(createProductOrder, null);
 
@@ -279,6 +276,7 @@ export function ProductConfigurator({
             <input type="hidden" name="artwork" value={artwork} />
             <input type="hidden" name="artworkId" value={artworkId} />
             {designId && <input type="hidden" name="designId" value={designId} />}
+            <AttachedDesignNote designId={designId} />
 
             {/* 1. 规格配置 */}
             <Sec id="configuration" title="Configuration">

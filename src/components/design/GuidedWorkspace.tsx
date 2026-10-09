@@ -6,6 +6,7 @@ import { Link, useRouter } from '@/navigation';
 import { useFabricCanvas, PX_PER_MM } from './useFabricCanvas';
 import GuideOverlay from './GuideOverlay';
 import { useDesignSave } from './useDesignSave';
+import { saveDesignBridge } from '@/lib/design-bridge';
 
 // 引导式工作台：背景/版式由印刷工程预先排好并锁定，客户只填字段。
 // 与全屏编辑器共用同一个引擎 hook 与保存流程，差别只在 lockEditing 与没有自由画布工具。
@@ -64,8 +65,8 @@ export default function GuidedWorkspace({
     async function goTo(kind: 'quote' | 'product') {
         const id = await save();
         if (!id) return;
-        // 与全屏编辑器同一个 localStorage 桥：读取即清，落到报价/下单表单
-        try { localStorage.setItem('pp_order_design', id); } catch { /* 隐私模式忽略 */ }
+        // 与全屏编辑器用同一个桥 key；消费端（报价/配置器表单）负责展示与清除
+        saveDesignBridge(id);
         router.push(kind === 'quote' ? '/quote' : '/products');
     }
 

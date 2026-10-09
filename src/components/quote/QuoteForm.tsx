@@ -1,14 +1,15 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useEffect, useState, useActionState } from 'react';
+import { useActionState } from 'react';
 import { submitRfq, type RfqState } from '@/features/quote/actions';
+import { useDesignBridge } from '@/lib/design-bridge';
+import { AttachedDesignNote } from '@/components/ui/AttachedDesignNote';
 
 export function QuoteForm() {
   const t = useTranslations('QuoteForm');
   const [state, formAction, pending] = useActionState<RfqState | null, FormData>(submitRfq, null);
-  const [designId, setDesignId] = useState('');
-  useEffect(() => { const d = localStorage.getItem('pp_order_design'); if (d) { setDesignId(d); localStorage.removeItem('pp_order_design'); } }, []);
+  const designId = useDesignBridge();
 
   if (state?.ok) {
     return (
@@ -28,6 +29,7 @@ export function QuoteForm() {
   return (
     <form action={formAction} className="grid gap-4 sm:grid-cols-2">
       {designId && <input type="hidden" name="designId" value={designId} />}
+      <AttachedDesignNote designId={designId} />
       <Field label={t('product')} error={err('productName')}>
         <input name="productName" required className={inputCls} placeholder={t('productPlaceholder')} />
       </Field>

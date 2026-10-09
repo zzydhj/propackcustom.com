@@ -7,6 +7,7 @@ import ObjectPropertiesPanel from './ObjectPropertiesPanel';
 import PreflightPanel from './PreflightPanel';
 import GuideOverlay from './GuideOverlay';
 import { useDesignSave } from './useDesignSave';
+import { saveDesignBridge } from '@/lib/design-bridge';
 
 const tool = 'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 disabled:cursor-not-allowed disabled:opacity-40';
 const zoomBtn = 'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs font-semibold text-neutral-700 transition hover:border-neutral-900 disabled:cursor-not-allowed disabled:opacity-40';
@@ -264,7 +265,7 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                         <button
                             type="button"
                             onClick={() => {
-                                try { localStorage.setItem('pp_order_design', savedId); } catch { /* ignore */ }
+                                saveDesignBridge(savedId);
                                 router.push('/quote');
                             }}
                             className="w-full rounded-lg bg-[#ffec5a] px-3 py-2 text-sm font-black text-neutral-900 transition hover:brightness-95"
@@ -274,7 +275,7 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                         <button
                             type="button"
                             onClick={() => {
-                                try { localStorage.setItem('pp_order_design', savedId); } catch { /* ignore */ }
+                                saveDesignBridge(savedId);
                                 router.push('/products');
                             }}
                             className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-900"
