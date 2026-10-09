@@ -11,6 +11,10 @@ export default function RegisterPage({ params }: { params: Promise<{ locale: str
 async function Register({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
+  return <RegisterView />;
+}
+
+function RegisterView() {
   const t = useTranslations('Auth');
   const brand = useTranslations('Brand');
   return (
