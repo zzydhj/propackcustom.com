@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { saveTemplate } from '@/features/admin/actions';
+import { DielineField } from './DielineField';
 
 const input = 'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900';
 
@@ -40,8 +41,7 @@ export function TemplateEditor({ tpl }: { tpl?: Tpl }) {
                     <input name="sort" type="number" defaultValue={tpl?.sort ?? 0} className={input} /></label>
                 <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" name="active" defaultChecked={tpl?.active ?? true} /> 启用</label>
             </div>
-            <label className="grid gap-1 text-sm"><span className="text-neutral-600">刀版 SVG（dieline，可选）</span>
-                <textarea name="dielineSvg" rows={2} defaultValue={tpl?.dielineSvg ?? ''} className={`${input} font-mono text-xs`} /></label>
+            <DielineField name="dielineSvg" defaultSvg={tpl?.dielineSvg} />
             <label className="grid gap-1 text-sm"><span className="text-neutral-600">预置内容 objects（Fabric JSON 数组，可选）</span>
                 <textarea name="sceneJson" rows={2} defaultValue={objects.length ? JSON.stringify(objects) : ''} className={`${input} font-mono text-xs`} /></label>
             <div className="flex items-center gap-3">
