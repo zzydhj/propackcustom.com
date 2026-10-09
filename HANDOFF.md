@@ -9,7 +9,7 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 **定位**：后台=内部销售的中文工具；前台=海外 B 端采购。个人用户看不懂是预期行为。
 **语言策略（2026-10-09 定）**：前台就做全英文为主，新文案**只写 `messages/en.json`**；中文和其它语言包**暂不碰**，缺失 key 由 `request.ts` 的 deepMerge 自动回退英文 → 非英文页面看到英文是预期，不是缺陷，不要再花时间补翻译。
 
-技术栈：Next.js 16.3.5（App Router/Turbopack/Server Actions）· React 19 · Prisma 6.19 + **Neon PostgreSQL** · next-intl（`localePrefix:'as-needed'`）· NextAuth · Tailwind v4 · **Fabric.js 7.4**（自研设计器引擎）· R2（未配置）· Resend（未配置实发）· Stripe（未配 key，降级 T/T）。
+技术栈：Next.js 16.3.5（App Router/Turbopack/Server Actions）· React 19 · Prisma 6.19 + **Neon PostgreSQL** · next-intl（`localePrefix:'as-needed'`）· NextAuth · Tailwind v4 · **Fabric.js 7.4**（自研设计器引擎）· R2（未配置）· Resend（未配置实发）· Stripe（未配 key，降级 T/T）。devDependency 里的 **ag-psd** 只服务于 PSD 导入 spike（`scripts/psd-spike.mjs`），应用运行时不引用。
 
 ## 2. 功能全景（全部已实测通过）
 
@@ -66,6 +66,7 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 7. 临时截图不进仓库：`.gitignore` 已含 `_qa_*.png`/`_verify_*.png`/`.qoder-*.png`。
 8. R2 未配置：设计器图片 dataURL、上传走文件名降级（逻辑已容错）；配 `R2_*` env 后启用直传。
 9. **影子库校验迁移基线（本期新增的可靠招）**：`.env` 的值**带双引号**，脚本里必须剥掉引号，否则 Prisma 报 P1013；连接串含 `&`，走 `npx`（cmd 转发）会被截断成 P1000 认证失败 → 用 `execFileSync(process.execPath, ['node_modules/prisma/build/index.js', ...])` 传参绕开 shell；Neon 可 `CREATE DATABASE pp_shadow_check;`（`prisma db execute --stdin`）当影子库，用完 `DROP DATABASE`。任何失败信息里会连带打印完整连接串（**含密码**）→ 输出前先脱敏。
+10. **Node 里跑 ag-psd**：读写像素要先 `initializeCanvas(createCanvas)`，本机没 node-canvas（Windows 装它要预编译二进制）→ spike 用全透明假 canvas 只验元数据链路；`writePsd` 返 **ArrayBuffer**（用 `.byteLength`，不是 `.length`）；读真实文件用 `readPsd(buf, { useImageData: false })` 可避开 canvas。PowerShell 下 `[locale]` 路径要走 Read 工具或 -LiteralPath，`Get-Content` 会把方括号当通配。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -80,6 +81,21 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 | 5 | 移动端登录态横向溢出 | 390px 下 SiteNav 右侧组（My Account + Sign out）撑出 scrollWidth>clientWidth | 易 |
 | 6 | 遗留 lint 债清理 | `npx eslint src` 仍有 22 个历史 `no-explicit-any`（admin/products/account 列表页）+ ProductEditor 三个未使用组件（SpecForm/SpecAddForm/specs） | 易 |
 | 7 | 测试数据清理 | UserDesign 残留 E2E-Save-Test-Label / Untitled design×N / **QA-Props-Panel-Test**（id `cmv07mmz00000ns2cn748nz4l`）+ PPMUW… 测试订单（本轮测试的两个模板 qa-dieline-test / qa-dieline-reset 已删净） | 易 |
+| 8 | PSD 批量导入 P1+ | 见 §6A：P0 spike 已跑完，卡在“需要真实 PSD 文件 + 5 个未决问题”；P1 还要 DesignTemplate 加 slots/sourceKey/dpi 与列表分页改造 | 中大 |
+
+## 6A. PSD 批量导入（新需求：P0 Spike 已跑完，等真实文件才能定 P1）
+
+需求：几百上千个 PSD（名片/贴纸/吊牌…）→ 自动变成云端可二次编辑的模板。**产品形态已定：背景锁定 + 少量命名槽位**（Printful/Canva 式），不是全图层可编辑。
+
+- 契约与验证：`src/lib/psd-template.ts`（纯函数，不依赖 ag-psd、不碰像素）+ `scripts/psd-spike.mjs`（19 项断言全绿，`node scripts/psd-spike.mjs a.psd` 可直接跑真实文件）。
+- **图层命名规范（没这套规范自动化必翻车）**：`__text:key__` 文字槽位 / `__slot:key__` 图片槽位 / `__dieline__` / `__bleed__`（含出血外扩矩形）/ `__safe__`（安全区内缩矩形）；其余图层归背景。画布尺寸 = 成品（trim）尺寸，文字层不开图层样式。
+- **Spike 查出的两条硬约束**：
+  1. **PSD 图层包围盒依附像素**：空图层读回来 `right===left`、`bottom===top`。所以标记层必须有实体像素（哪怕 1px 占位矩形）；映射器现在对退化几何直接报 `layer-no-geometry` error 并停止上架（以前会静默算出 bleed=0mm / safe=27mm 这种看起正常的错值）。
+  2. **mm 只能反算**：像素是整数，1063px@300dpi=90.002mm → 映射器统一吸到 0.5mm（`snapMm`），模板尺寸以吸附后的标准规格入库。
+- 已覆盖的映射：pt→场景px（1pt=2.822px）、`{r,g,b}`→hex、段落对齐、未托管字体→强制回退 Arial 并报警、隐藏层跳过、零槽位=死图不可发布、文字带图层样式=不可发布。
+- **还没验证（必须拿设计产线的真实 PSD）**：Photoshop 存的引擎数据/智能对象/矢量蒙版/CMYK/专色承刀版；以及背景合成图切片（需 worker：带 canvas 的 Node / headless Chrome / Python psd-tools）。
+- **未决问题（阻塞 P1 开工）**：① PSD 由谁产、能否定规范；② 客户要改什么（只文字+logo？有无产品实拍图）；③ 字体策略（只用托管集 / 买授权子集化 / 允许上传）；④ 模板页要不要做 SEO；⑤ 先内部上架还是公开市场。
+- **语义缺口（开工前必须定）**：当前设计器画布尺寸=trim，而带出血的 PSD 背景比 trim 大；Fabric 导出只覆盖画布本身 → 要么把导出改成覆盖含出血的矩形，要么让 PSD 画布=trim 并接受“背景无出血”。选错会导致印厂拒收。
 
 ## 7. 关键文件速查
 
@@ -91,6 +107,7 @@ B2B 定制包装/印刷站（面向海外采购商，主语言 en，7 语言 i18
 - schema：`prisma/schema.prisma`（Order.designId L277、Quote.designId、DesignTemplate/UserDesign L~360-400、Post/Video）
 - 首页：`src/app/[locale]/page.tsx`（各段都是本文件内的展示型函数；新横幅 `DesignStudioBand` 在 `Categories` 后）· 文案 `messages/en.json`
 - 色彩：`src/lib/color-gamut.ts`（sRGB→Lab + CMYK 色域近似上限，**只预警不换算**）
+- PSD 导入 spike：`src/lib/psd-template.ts`（纯映射契约）· `scripts/psd-spike.mjs`（自检 + 跑真实 PSD）· 详见 §6b
 
 ## 8. 提交链（origin/main 已同步）
 
