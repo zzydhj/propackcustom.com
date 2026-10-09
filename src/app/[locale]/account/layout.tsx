@@ -33,7 +33,7 @@ function AccountSidebar({ email }: { email: string }) {
         {items.map((i) => (
           <Link
             key={i.href}
-            href={i.href as any}
+            href={i.href}
             className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
           >
             {i.label}

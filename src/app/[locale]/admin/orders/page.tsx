@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { OrderRowForm } from '@/components/admin/OrderRowForm';
 import { OrderReviewPanel, type ReviewOrder } from '@/components/admin/OrderReviewPanel';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ORDER_STATUS_ZH, isExpired, shippingLines, type Shipping, type SpecLine } from '@/lib/orders';
+import { ORDER_STATUS_ZH, shippingLines, type Shipping, type SpecLine } from '@/lib/orders';
 import { stripeEnabled } from '@/lib/stripe';
 
 // 后台订单：人工对接的主战场。顶部提供状态 tabs + 时间范围 + 搜索（URL 驱动的服务端筛选），
@@ -118,6 +118,8 @@ async function List({ params, searchParams }: { params: Promise<{ locale: string
   const pendingGlobal = await prisma.order.count({ where: { status: 'SUBMITTED' } });
 
   const rangeDef = RANGES.find((r) => r.key === range)!;
+  // 本页是 force-dynamic 的服务端组件，“现在”就是本次请求的时刻（lint 的 purity 规则不区分环境）
+  // eslint-disable-next-line react-hooks/purity
   const rangeStart = rangeDef.days > 0 ? new Date(Date.now() - rangeDef.days * 86400000) : undefined;
   const sWhere = searchWhere(q);
 

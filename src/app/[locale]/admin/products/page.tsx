@@ -3,8 +3,9 @@ import { useTranslations } from 'next-intl';
 import { requireAdmin } from '@/lib/guards';
 import { prisma } from '@/lib/prisma';
 import { ProductAdmin } from '@/components/admin/ProductAdmin';
-import { ProductEditor } from '@/components/admin/ProductEditor';
-import { mapProductConfig } from '@/lib/config-engine';
+import { ProductEditor, type ProductRow } from '@/components/admin/ProductEditor';
+import { mapProductConfig, type ProductConfig } from '@/lib/config-engine';
+import { localeText, localeTextOr } from '@/lib/locale-text';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 export default function AdminProductsPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -19,7 +20,6 @@ async function Page({ params }: { params: Promise<{ locale: string }> }) {
     prisma.product.findMany({
       orderBy: { slug: 'asc' }, take: 200,
       include: {
-        specs: true,
         attributeGroups: { orderBy: { sort: 'asc' }, include: { options: { orderBy: { sort: 'asc' } } } },
         dependencyRules: true,
         priceRules: true,
@@ -28,13 +28,13 @@ async function Page({ params }: { params: Promise<{ locale: string }> }) {
     prisma.category.findMany({ orderBy: { slug: 'asc' } }),
   ]);
 
-  const catOptions = categories.map((c) => ({ id: c.id, slug: c.slug, name: String((c.name as any)?.en ?? c.slug) }));
+  const catOptions = categories.map((c) => ({ id: c.id, slug: c.slug, name: localeTextOr(c.name, c.slug) }));
   const editors = products.map((p) => ({
     product: {
       id: p.id,
       slug: p.slug,
-      name: String((p.name as any)?.en ?? ''),
-      description: String((p.description as any)?.en ?? ''),
+      name: localeText(p.name),
+      description: localeText(p.description),
       basePrice: Number(p.basePrice),
       currency: p.currency,
       categoryId: p.categoryId,
@@ -51,19 +51,14 @@ async function Page({ params }: { params: Promise<{ locale: string }> }) {
       dependencyRules: p.dependencyRules,
       priceRules: p.priceRules,
     }),
-    specs: p.specs.map((s) => ({
-      id: s.id,
-      name: String((s.name as any)?.en ?? ''),
-      options: Array.isArray(s.options) ? (s.options as any[]).map((o) => ({ value: String(o?.value ?? ''), adder: Number(o?.adder ?? 0) })) : [],
-    })),
   }));
 
-  return <ProductsView simple={products.map((p) => ({ id: p.id, slug: p.slug, name: String((p.name as any)?.en ?? ''), basePrice: Number(p.basePrice), currency: p.currency }))} editors={editors} catOptions={catOptions} total={products.length} />;
+  return <ProductsView simple={products.map((p) => ({ id: p.id, slug: p.slug, name: localeText(p.name), basePrice: Number(p.basePrice), currency: p.currency }))} editors={editors} catOptions={catOptions} total={products.length} />;
 }
 
 function ProductsView({ simple, editors, catOptions, total }: {
   simple: { id: string; slug: string; name: string; basePrice: number; currency: string }[];
-  editors: { product: any; specs: any[]; config: any }[];
+  editors: { product: ProductRow; config: ProductConfig }[];
   catOptions: { id: string; slug: string; name: string }[];
   total: number;
 }) {
@@ -81,7 +76,7 @@ function ProductsView({ simple, editors, catOptions, total }: {
         ) : (
           <div className="space-y-3">
             {editors.map((e) => (
-              <ProductEditor key={e.product.id} product={e.product} specs={e.specs} categories={catOptions} config={e.config} />
+              <ProductEditor key={e.product.id} product={e.product} categories={catOptions} config={e.config} />
             ))}
           </div>
         )}

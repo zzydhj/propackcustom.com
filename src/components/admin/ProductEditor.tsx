@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
-import { updateProduct, upsertSpec, deleteSpec } from '@/features/admin/actions';
+import { updateProduct } from '@/features/admin/actions';
 import { ProductConfiguratorBuilder } from './ProductConfiguratorBuilder';
 import type { ProductConfig } from '@/lib/config-engine';
 
@@ -23,56 +23,9 @@ export type ProductRow = {
 
 const inputCls = 'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900';
 
-// 单个字段（规格）的编辑表单：名称 + 选项（每行 "选项 | 加价"）
-function SpecForm({ productId, spec }: { productId: string; spec: SpecRow }) {
-    const t = useTranslations('Admin');
-    const [state, formAction, pending] = useActionState<{ ok: boolean; error?: string } | null, FormData>(upsertSpec, null);
-    const optionsText = spec.options.map((o) => `${o.value} | ${o.adder}`).join('\n');
+// 旧的 Spec 编辑表单已下线：规格/选项树统一走 ProductConfiguratorBuilder。
 
-    return (
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-            <form action={formAction} className="space-y-2">
-                <input type="hidden" name="productId" value={productId} />
-                <input type="hidden" name="specId" value={spec.id} />
-                <input name="name" defaultValue={spec.name} placeholder={t('specName')} className={inputCls} />
-                <textarea name="options" defaultValue={optionsText} rows={3} placeholder={t('specOptions')} className={`${inputCls} font-mono`} />
-                <div className="flex items-center gap-2">
-                    <button type="submit" disabled={pending} className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-60">
-                        {pending ? '…' : t('save')}
-                    </button>
-                    {state?.ok && <span className="text-xs text-green-600">✓ {t('saved')}</span>}
-                    {state?.error && <span className="text-xs text-[#ff4d4f]">{t('errInvalid')}</span>}
-                </div>
-            </form>
-            <form action={deleteSpec} className="mt-2">
-                <input type="hidden" name="id" value={spec.id} />
-                <button type="submit" className="text-xs font-semibold text-[#ff4d4f] hover:underline">{t('deleteSpec')}</button>
-            </form>
-        </div>
-    );
-}
-
-// 新增字段表单
-function SpecAddForm({ productId }: { productId: string }) {
-    const t = useTranslations('Admin');
-    const [state, formAction, pending] = useActionState<{ ok: boolean; error?: string } | null, FormData>(upsertSpec, null);
-    return (
-        <form action={formAction} className="space-y-2 rounded-xl border border-dashed border-neutral-300 p-3">
-            <input type="hidden" name="productId" value={productId} />
-            <p className="text-sm font-semibold text-neutral-900">{t('addSpec')}</p>
-            <input name="name" placeholder={t('specName')} className={inputCls} />
-            <textarea name="options" rows={3} placeholder={t('specOptions')} className={`${inputCls} font-mono`} />
-            <div className="flex items-center gap-2">
-                <button type="submit" disabled={pending} className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-60">
-                    {pending ? '…' : t('add')}
-                </button>
-                {state?.error && <span className="text-xs text-[#ff4d4f]">{t('errInvalid')}</span>}
-            </div>
-        </form>
-    );
-}
-
-export function ProductEditor({ product, categories, specs, config }: { product: ProductRow; categories: CategoryOption[]; specs: SpecRow[]; config: ProductConfig }) {
+export function ProductEditor({ product, categories, config }: { product: ProductRow; categories: CategoryOption[]; config: ProductConfig }) {
     const t = useTranslations('Admin');
     const [state, formAction, pending] = useActionState<{ ok: boolean; error?: string } | null, FormData>(updateProduct, null);
 

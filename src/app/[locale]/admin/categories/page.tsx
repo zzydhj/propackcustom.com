@@ -3,6 +3,7 @@ import { setRequestLocale } from 'next-intl/server';
 import { requireAdmin } from '@/lib/guards';
 import { prisma } from '@/lib/prisma';
 import { CategoryAdmin } from '@/components/admin/CategoryAdmin';
+import { localeTextOr } from '@/lib/locale-text';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 export default function AdminCategoriesPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -14,7 +15,7 @@ async function Page({ params }: { params: Promise<{ locale: string }> }) {
     setRequestLocale(locale);
     await requireAdmin();
     const categories = await prisma.category.findMany({ orderBy: { slug: 'asc' }, include: { _count: { select: { products: true } } } });
-    const rows = categories.map((c) => ({ id: c.id, slug: c.slug, name: String((c.name as any)?.en ?? c.slug), productCount: c._count.products }));
+    const rows = categories.map((c) => ({ id: c.id, slug: c.slug, name: localeTextOr(c.name, c.slug), productCount: c._count.products }));
     return <View rows={rows} total={categories.length} />;
 }
 

@@ -3,14 +3,16 @@ import { hasLocale } from 'next-intl';
 import { routing } from './routing';
 
 // 递归深合并：以英文为底，当前语言覆盖已有键，缺失键自动回退英文
-function deepMerge<T extends Record<string, any>>(base: T, override: Record<string, any>): T {
-  const out: Record<string, any> = { ...base };
+type JsonMap = Record<string, unknown>;
+
+function deepMerge<T extends JsonMap>(base: T, override: JsonMap): T {
+  const out: JsonMap = { ...base };
   for (const key of Object.keys(override ?? {})) {
     const b = out[key];
     const o = override[key];
     out[key] =
       b && o && typeof b === 'object' && typeof o === 'object' && !Array.isArray(b)
-        ? deepMerge(b, o)
+        ? deepMerge(b as JsonMap, o as JsonMap)
         : o;
   }
   return out as T;

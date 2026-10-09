@@ -1,6 +1,7 @@
 import { setRequestLocale } from 'next-intl/server';
 import { Link } from '@/navigation';
 import { prisma } from '@/lib/prisma';
+import { localeText, localeTextOr } from '@/lib/locale-text';
 import DesignPendingHint from '@/components/product/DesignPendingHint';
 
 export default function ProductsPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -17,8 +18,8 @@ async function List({ params }: { params: Promise<{ locale: string }> }) {
     });
     const rows = products.map((p) => ({
         slug: p.slug,
-        name: String((p.name as any)?.en ?? p.slug),
-        category: String((p.category.name as any)?.en ?? ''),
+        name: localeTextOr(p.name, p.slug),
+        category: localeText(p.category.name),
         currency: p.currency,
         basePrice: Number(p.basePrice),
         pricingMode: p.pricingMode as string,
@@ -34,6 +35,8 @@ async function List({ params }: { params: Promise<{ locale: string }> }) {
                 {rows.map((p) => (
                     <Link key={p.slug} href={`/products/${p.slug}`} className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white transition hover:shadow-lg">
                         <div className="grid h-40 place-items-center bg-neutral-100 text-neutral-300">
+                            {/* 产品图在 R2 公网域名上，未配 next/image 的 remotePatterns 前先直链（与 SiteNav 缩略图同策略） */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             {p.images[0] ? <img src={p.images[0]} alt={p.name} className="h-full w-full object-cover" /> : <span className="text-4xl">📦</span>}
                         </div>
                         <div className="p-5">
