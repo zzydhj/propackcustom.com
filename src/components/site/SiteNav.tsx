@@ -20,10 +20,11 @@ import type { NavGroup } from '@/lib/megaMenu';
 // 3) 没悬停任何分类时的静止态 = 第一个分类；一旦左列有项被 hover，CSS 把静止态让位给对应面板。
 //    左列项与右列面板靠 :nth-child(n) 一一对应（见 globals.css），不写死分类名、也不依赖像素偏移。
 //
-// 左列不给内部滚动条（11 个分类全部展开）；面板整体 max-h 受视口约束，装不下时才由面板自身滚动。
+// 左列不给内部滚动条（11 个分类全部展开）；面板总高写死，内容高的分类由右列自己滚动（见 globals.css）。
 
 // 面板显隐：base 隐藏 → 悬停/聚焦显示；open（点击态）直接显示。三组互斥类，不叠加同优先级冲突
-const PANEL = 'absolute inset-x-0 top-full max-h-[calc(100vh-72px)] overflow-y-auto overscroll-contain border-b border-neutral-200 bg-white shadow-[0_20px_40px_-24px_rgba(0,0,0,0.25)] transition-opacity duration-150 hidden lg:block';
+// 面板自身不滚动（高度与左右列分工由 globals.css 的 .mega-grid/.mega-left/.mega-right 管）
+const PANEL = 'absolute inset-x-0 top-full border-b border-neutral-200 bg-white shadow-[0_20px_40px_-24px_rgba(0,0,0,0.25)] transition-opacity duration-150 hidden lg:block';
 const PANEL_OFF = 'invisible opacity-0';
 const PANEL_ON = 'visible opacity-100';
 const PANEL_HOVER = 'lg:group-hover/mega:visible lg:group-hover/mega:opacity-100 lg:group-focus-within/mega:visible lg:group-focus-within/mega:opacity-100';
@@ -119,9 +120,9 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
                         {/* Mega Menu 面板（常驻 DOM，靠 visibility 切换 → 没水合也能悬停弹出） */}
                         <div className={`${PANEL} ${open ? PANEL_ON : `${PANEL_OFF} ${PANEL_HOVER}`}`}>
                             <div className="h-1 w-full bg-[#ffec5a]" />
-                            <div className="mega-grid container-site relative grid grid-cols-[220px_minmax(0,1fr)] gap-8 py-8">
-                                {/* Left: 分类列表。全部展开，不给内部滚动条 */}
-                                <div>
+                            <div className="mega-grid container-site grid grid-cols-[220px_minmax(0,1fr)] gap-8 py-8">
+                                {/* Left: 分类列表。全部展开，不参与面板高度计算 */}
+                                <div className="mega-left">
                                     <p className="mb-3 px-3 text-xs font-bold uppercase tracking-wide text-neutral-400">{t('products')}</p>
                                     <ul className="space-y-1">
                                         {groups.map((g) => (
@@ -138,8 +139,9 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
                                 </div>
 
                                 {/* Right: 每个分类一块面板，与左列 :nth-child 一一对应。
-                                    静止态只显示第一块，悬停哪一项就换哪一块（全 CSS，零 JS） */}
-                                <div>
+                                    静止态只显示第一块，悬停哪一项就换哪一块（全 CSS，零 JS）；
+                                    比面板高的分类在 .mega-right 内部滚动，不会顶高整块面板 */}
+                                <div className="mega-right">
                                     {groups.map((g) => (
                                         <div key={g.id} className="mega-panel">
                                             <CategoryPanel g={g} viewAll={t('viewAll')} />
