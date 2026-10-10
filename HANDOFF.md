@@ -35,6 +35,15 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
   - `Export SVG (vector)`：`exportSVG()` 把 Fabric toSVG 根节点改写为**物理毫米** `width="100mm" height="50mm" viewBox="0 0 800 400"` → Ai/Inkscape/印厂打开即真实尺寸。
   - `Export PDF (print)`：浏览器端 `jspdf@4.2.1 + svg2pdf.js@2.8.1`（dynamic import 不进首屏）。**关键坑：必须传 `DOMParser` 解析后的 SVGElement，传字符串会炸 `rootSvg.querySelectorAll is not a function`**。实测产出合法 %PDF-1.3、字体嵌入。文案提示印前需转曲。
   - `Export PNG`（toDataURL multiplier=2 ≈400dpi）、`Export/Import JSON`（工程文件）。
+- **大图不卡编辑（2026-10-10 完成并实测）**：客户图不再以 base64 进画布。
+  - 链路：`toWorkingImage()`（`src/lib/working-image.ts`，长边 ≤1800px / ≤1.2MB，**只选 JPEG/PNG 不用 WebP**，因为导出要把字节原样交给印厂）→ `POST /api/design-asset`（本站写桶，**不走预签名**：浏览器直传依赖桶 CORS，没配就静默失败）→ 画布用同源代理 `/api/asset/[...key]` → 导出前 `assetAsDataUrl()` 内联回 dataURL。
+  - 实测（2400×1600 噪声 PNG，13MB）：提示行 `13 MB → 915 KB · 1800×1200px · stored in cloud`（不透明一挡 JPEG q=0.85 就达标）；库里 `sceneJson` **8872 字符**、`proxyRefs=2`、`dataImageRefs=0`（像素一个字节都不落库；旧路径光 base64 每份快照 17.5M 字符）；撤销栈 2 步 10 KB → 8 步 **61 KB**（旧路径同样操作要 ~140MB 字符串）。
+  - **画布没被污染**：`lower-canvas.toDataURL()` 正常读出 457KB PNG（公共域名直链做不到，`file.propackcustom.com` 无 CORS → 必 SecurityError，见 §5.26）。
+  - 导出自包含：SVG blob 1.2MB，`data:image` **1 处** / `/api/asset/` **0 处**，`<g id="PRINT">`+`<g id="DIELINE">` 齐全，根节点 `width="80mm"`。内联失败会在左栏提示「N image(s) could not be embedded」。
+  - 历史栈上限 `HISTORY_MAX=60`（从头部裁），footer 常驻读数 `Undo history: N steps · X KB held in memory`；`undo()` 只动指针不缩栈，所以读数不随 Undo 变小是**预期语义**（实测 `<text>` 6→4 证明对象真被摘掉）。
+  - 限流：`src/lib/rate-limit.ts` 收拢两个匿名写入口，**登录用户不限流**（换图是编辑动作）；`/api/asset` 目录白名单 `SERVED_PREFIXES`（`uploads/proofs`、`templates/source`、`.env` 实测全 404，两种路径穿越也 404），非图片类型/超 2MB/缺 file 各自 400。
+  - 小图透传（同日补）：≤1800px 且 ≤1.2MB 的 JPEG/PNG 直接用客户原字节，不再重编码（实测 9KB→9KB；否则 26KB 的透明 PNG 会被浏览器重压成 91KB，PNG 没有质量参数可降只能掉尺寸）。
+  - 网络读数（本机→R2）：`POST /api/design-asset` 2.26s（首次）/0.75s；代理首取 915KB 2.9s，之后 **3–7ms**（`public, max-age=31536000, immutable` + `Cross-Origin-Resource-Policy: same-origin` 命中浏览器缓存）。
 - **对象属性面板**（`src/components/design/ObjectPropertiesPanel.tsx`，纯受控展示）：单选才出面板（多选提示 N objects selected），Text 给字体/字号/颜色（取色器+8 色块）/B·I·U·L·C·R，通用给 opacity/rotate/flipX·Y/Layer 4 键/Align to dieline 6 键 + 中心 mm 读数。引擎侧 `useFabricCanvas` 新增 `active/selectionCount/patchActive/alignActive/layerActive`，监听 `selection:created|updated|cleared` 同步选中态；**bold/italic → fontWeight/fontStyle 的字段映射只留在引擎层**，UI 只传语义。对齐用 `getBoundingRect()` 以画布（=刀版）为基准，层级用 `canvas.getObjects()` 索引 + `moveObjectTo`（**Fabric v7 对象上已无 bringToFront/sendBackwards**）；滑块连续改值走 `scheduleRecord` 350ms 合并历史，离散操作（对齐/层级）直接 `record`。历史指针已从 ref 改为 state（同时消掉两处 react-hooks/refs 报错，design 目录 eslint 0 错 0 警）。
 - **Fabric v6/7 默认 `originX/originY=center`**：new Textbox/Image 若不显式声明左上角基准，left/top 会被当中心点→新对象左半跑出刀版（已修，addText/addImage 均显式定基准并算居中）。
 - **印前自检 Pre-flight**（`src/components/design/PreflightPanel.tsx` + 引擎 `runPreflight/selectObject`）：三条几何规则均在**未缩放的场景坐标**上算（所以 UI 缩放不影响判定，实测 156% 与 100% 条目逐字相同）——超出出血框=error、跟裁切线相交且未铺满成品线=warning（被裁）、文字出安全区=warning；同一对象只报一条（error 优先早返）。触发时机：`record()` 内（涵盖增删改+滑块防抖）、载入/导出/撤销还原后主动重跑（`restoring` 期间 object:added 被抑制，不补跑会漏）。点列表行会选中该对象并把中心滚到工作区中间；注意：中只在**刀版内但因放大出视口**时有效，完全拖到刀版外的对象无法滚达（只能选中+联动属性面板）。已实测：warning/error/安全区三类均正例命中、Delete→条目 0→Undo→条目恢复、改字号后 350ms 自动刷新。
@@ -123,6 +132,10 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 35. **`ensureUniqueSlug(raw, excludeId)` 更新时必须传自己的 id**：不传会撞上自己那一行，**每重跑一次批处理 slug 就多一个 -2/-3 后缀**（实测踩过，连跑两次已验证修正后幂等）。同理去重集合要存 hash→id，不能只存 hash。
 36. **pdf-lib 的 `doc.getProducer()` 不可信**：实测两个 Illustrator 直出文件都被它报成 `"pdf-lib (https://github.com/Hopding/pdf-lib)"`，而字节里写的是 `/Producer (Adobe PDF library 17.00)`。我基于这个错值写了一整条“客户稿被转换工具重写过”的结论，还让用户换导出方式 —— 元数据必须从原始字节读（`pdf-facts.ts` 的 `rawInfo()`）。**教训：只要一个字段会用来下结论，就得用第二种方法交叉验过。**
 37. **改 URL 结构后要把所有入口重查一遍**：`/design` 从 `?type=` 改成路径后，页眉的 Design Studio 还链在 `/design/label`（分类走 ?type= 时代的遗留），而分类页又没有胶囊筛选条（胶囊只住在 /design），导致换分类必须先后退。现在两处共用 `src/components/design/TemplateFilterBar.tsx`（当前分类胶囊高亮 + 搜索提交到当前路径 = 分类内搜索）。另：分类页带 `q` 且 0 结果时**不能**落到“该类型无模板 → 空白编辑器”分支，否则搜索失败被伪装成分类为空。
+38. **长跑的 dev server 会在「会话中途改文件」后把客户端页面弄死**：`/design/*` 这类 `ssr:false` 动态块拿不到当前 chunk 图 → HMR WebSocket 连不上 + 某个 chunk 回 403 → **整页 0 水合**（`__reactProps` 命中 0），表现是永远停在 “Loading designer…”，而且没有任何 pageerror。判别：`document.visibilityState` 正常、rAF 会触发、chunk 请求 200，但 `canvas` 数 0 → 不是浏览器也不是代码的问题。修法：**重启 dev server**，或改用生产构建测（`npm run build` + `npx next start -p 3000`，同一 URL 立刻 2 张 canvas）。生产构建还顺带避开 dev 的 React 未压缩开销，性能读数更可信。
+39. **不要给 `next start` 传 `-H`**：实测 `-H 127.0.0.1` 后 next-intl 中间件把 rewrite 写成绝对地址 `http://localhost:3000/en/...`（host 与请求不匹配）→ `/design/sticker` **无限 307 自我重定向**（`ERR_TOO_MANY_REDIRECTS`）。默认绑定下 `x-middleware-rewrite` 是相对路径，正常。
+40. **自建主机跑 prod 时 Auth.js 报 `UntrustedHost`**（`.env` 只有 `NEXTAUTH_SECRET/NEXTAUTH_URL`，没 `AUTH_TRUST_HOST`）。代码里所有 `auth()` 都 `.catch(() => null)`，所以**不会 500**，但会被当匿名 → 走限流、拿不到 userId。部署清单要补 `AUTH_TRUST_HOST=1`。
+41. **沙箱 PowerShell 会随机拒绝 `netstat.exe` / `taskkill.exe` / `Get-NetTCPConnection` / `Get-CimInstance`**（同一命令上一条还能跑）。要定位端口持有者：先用还能跑的 `Get-CimInstance Win32_Process -Filter "Name='node.exe'"` 取 CommandLine，实在不行退到 `Get-Process node | Sort-Object StartTime` 挑最新的 PID，再 `Stop-Process -Id <pid> -Force`（这条稳定可过审批）。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -142,6 +155,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 | 10 | 内容模板库（定位①的“有东西可逛”） | ✅ 第一批已入库：`scripts/generate-templates.mjs` 生成 **200 个**自有版权可编辑模板（版式骨架×配色×图案×字体），库内共 205；卡片预览改成服务端编译 SVG（`src/lib/scene-svg.ts`，不依赖 R2） | — |
 | 11 | 模板库发现体验补齐 | 待做：色系/风格/行业 facet（tags 已写，查询层还没按它筛）、Most Popular/Newest 排序、模板详情页（Avery 那种）、收藏/More like this | 中 |
 | 12 | 刀版三件套（印刷正确性） | ✅ 已完成（2026-10-10）：① 预检按 `dielineSvg` 解析出的**真实形状**判定（圆刀按安全圆/出血圆，不再用矩形包围盒）② `fullBleed` 满版检查（没东西盖住成品线→“会露白底”）③ 生产交付：SVG 拆 `<g id="PRINT">` + 非印刷 `<g id="DIELINE">`，PDF 第 2 页 1:1 刀版层。**剩下**：异形（path 刀线）仍退化成矩形；作业单页（job ticket）未加 | 中 |
+| 13 | 大文件不卡编辑 | ✅ 已完成并实测（2026-10-10），见 §3「大图不卡编辑」：有界工作图 + R2 + 同源代理 + 导出内联 + 栈上限 60。剩下可做：`UserDesign.thumbKey` 生成卡片缩略图（现在卡片是 SVG 编译）、把 `exports/designs/` 的成品导出也接同一条链 | 中 |
 
 ## 6A. PSD / AI 批量导入（**已拿到真实样本并跑完，结论见下**）
 
@@ -222,6 +236,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 - 免费设计引导：`src/components/design/FreeDesignCallout.tsx`（一份文案三个密度：`banner`=/design 与 /design/[type] 顶部横条、`rail`=引导页左栏竖卡、`strip`=编辑器左工具栏紧凑条）。主 CTA = `/quote?intent=design-help`；第二入口（mailto）只在 `NEXT_PUBLIC_SALES_EMAIL` 配了真邮箱才渲染。口径：“Free with any order”，不承诺无条件免费打样。配套：`src/lib/contact.ts`、`src/lib/quote-intent.ts`
 - 印前与刀版：**`src/lib/dieline.ts`**（从 dielineSvg 解析裁切形状 + 三个判定区域 + `DieObject`；预检与生成器共用一份规则）、`src/lib/color-gamut.ts`（色域预警）、**`src/lib/production-export.ts`**（`svgWithDielineLayer` 拆 PRINT/DIELINE 两组；`appendDielinePage` 给 PDF 加第 2 页 1:1 刀版层；刀线只取自模板，不由客户带）、`src/components/design/PreflightPanel.tsx`（kind 新增 `no-full-bleed`；`index<0` 的图级问题不可点选）
 - 单位与 AI 导入：**`src/lib/scene-units.ts`**（`PX_PER_MM` 唯一定义处，`useFabricCanvas` 再导出它）、**`src/lib/pdf-facts.ts`**（仅提取事实：页框/OCG/字体/带坐标文字/路径计数）、**`src/lib/ai-template.ts`**（纯映射：事实 → 模板草稿 + slots + issues + publishable）、**`scripts/import-ai.mts`**（批量导入器）、`scripts/ai-pdf-spike.mts`（单文件取证报告，已改为复用上面两个模块）
+- 大图链路：**`src/lib/working-image.ts`**（`toWorkingImage`/`formatBytes`，两条边界 `WORKING_MAX_EDGE=1800`/`WORKING_MAX_BYTES=1.2MB` + JPEG/PNG 降级阶梯）、**`src/lib/design-asset.ts`**（客户端：`storeWorkingImage` 失败返回 null 不抛、`assetAsDataUrl`、`isRemoteAsset`）、`src/app/api/design-asset/route.ts`（≤2MB，只收 jpeg/png）、**`src/app/api/asset/[...key]/route.ts`**（同源代理，白名单外一律 404）、`src/lib/rate-limit.ts`（`allowedFor`/`clientIp`，两个写入口共用）、`src/lib/r2.ts` 的 `isServableKey/serveCacheControl/assetProxyUrl/putObjectBytes/getObjectBytes`
 - 设计器：`src/components/design/{useFabricCanvas,DesignCanvas,DesignStudio,ObjectPropertiesPanel,PreflightPanel,GuideOverlay}.tsx/ts` · `src/features/design/actions.ts` · `src/app/[locale]/design/{page,[productType]/page}.tsx` · `src/app/[locale]/account/designs/page.tsx`
 - 快速定制：`src/app/[locale]/customize/[templateSlug]/page.tsx` · `src/components/design/{GuidedStudio,GuidedWorkspace,useDesignSave}.tsx/ts` · `src/components/product/DesignPendingHint.tsx`
 - 桥接：`src/lib/design-bridge.ts`（localStorage `pp_order_design` 唯一入出口：`useDesignBridge/saveDesignBridge/clearDesignBridge`）· `src/components/ui/AttachedDesignNote.tsx`（表单上展示挂的是哪份 + don’t attach）· `src/components/product/DesignPendingHint.tsx`（/products 列表页黄条）· `src/components/quote/{ProductConfigurator,QuoteForm}.tsx` · `src/features/{order,quote}/actions.ts`（designId 落库）
@@ -247,6 +262,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 | `5385d94` | `fix(auth)` register 页 `useTranslations` 移入同步子组件（**早前会话遗留未提交**，非本期改动） |
 | `6a834de`+`14a0d91` | PSD 导入 spike（§6A）与文档 |
 | 本轮 | `feat(customize)` 快速定制页 `/customize/[slug]` + `GuideOverlay/useDesignSave` 抽取 + `/products` 桥提示条；修 4 处（锁定下选中框泄漏 / 桥残留无承接 / h1 文案与字段数矛盾 / 无移除 logo） |
+| `25811d4` | `feat(design-studio)` **大图不卡编辑**：有界工作图 + `/api/design-asset` + 同源代理 `/api/asset/[...key]` + 导出内联 + `rate-limit.ts` 收拢 + `HISTORY_MAX=60`（实测数字见 §3） |
 | docs | 本文 + `.gitignore`（排除 `verify-*` 验收产物） |
 
 历史：`3e56f5d` HANDOFF 文档 · `4614eed` 矢量导出 SVG+PDF · `26236e7` M3 刀版/出血 overlay · `d049008` 我的设计+后台看稿链+productType 持久化 · `ba152ba` 专家报价路径 · `e0b5bdf` M2a 设计→下单桥 · `14e4603` 画布放大+满宽 · `9f6edee` 前台文案英文化 · `025d4ce` M1b 作品入库 · `ab40b9e` 模板系统+后台CRUD+宽度 · `6f26735` mega menu 修复+设计入口 · `aff24c4` B端化+SEO+M0/M1。
