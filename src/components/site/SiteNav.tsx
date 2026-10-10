@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/navigation';
 import { signOutAction } from '@/features/auth/actions';
 import { LocaleSwitcher } from './LocaleSwitcher';
+import { NAV_ART } from './NavArt';
 import type { NavGroup } from '@/lib/megaMenu';
 
 // 顶部导航 + 产品 Mega Menu（左侧主分类竖列 + 右侧子分类分组的小方块）
@@ -50,6 +51,10 @@ function CategoryPanel({ g, viewAll }: { g: NavGroup; viewAll: string }) {
                                     {it.image ? (
                                         // eslint-disable-next-line @next/next/no-img-element
                                         <img src={it.image} alt={it.label} className="h-full w-full object-cover" />
+                                    ) : NAV_ART[g.id] ? (
+                                        /* 产品没图时用分类示意图（库里 5 个产品全部 imgs=0，字母块看着像没加载完）。
+                                           后台一旦给产品传了图，it.image 分支会自动接管 */
+                                        NAV_ART[g.id]
                                     ) : (
                                         <div className="grid h-full w-full place-items-center font-display text-lg font-black text-neutral-300">
                                             {it.label.trim().slice(0, 1)}
