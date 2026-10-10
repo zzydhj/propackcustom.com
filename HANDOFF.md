@@ -96,6 +96,8 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 14. **批量灌数据后要 `ANALYZE "DesignTemplate"`**：统计信息是旧的，planner 会估错行数选错计划（实测同一个查询：ANALYZE 前 Seq Scan + Sort，ANALYZE 后 Index Scan + Limit）。将来的导入器末尾要补一步 ANALYZE。
 15. **右侧浮动工具栏 `FloatingHelp`（`fixed right-0 z-40 w-16`）会盖住页面右缘控件**：实测 1167px 宽下，一个靠右的提交按钮被它盖住，点下去跳到 `/quote`。新控件不要靠右缘放（或者给容器留 64px 右栏）。
 16. **中间件里拼重定向地址不要手拼字符串**：`new URL(`/${rest}${search}`, req.url)` 在 `rest` 已以 `/` 开头时得 `//design?q=x`，被当成**协议相对 URL** → 跳到 `http://design/`（实测踩过，很隐讳）。正确写法：`new URL(rest === '' ? '/' : rest, req.url)` 再 `target.search = search`。
+17. **客户可见的联系方式只认 `NEXT_PUBLIC_SALES_EMAIL`**（`src/lib/contact.ts`）：必须用公开变量，因为卡片会出现在 `ssr:false` 的客户端树里，普通 `SALES_EMAIL` 进不了客户端 bundle（永远是 undefined）；而且 no-reply/noreply/postmaster/abuse 这类地址会被过滤成 undefined → **入口直接隐藏**。三态已实测：真邮箱→出 mailto、no-reply→隐藏、不配→隐藏。不要把 `EMAIL_FROM`（当前是 no-reply@）挂到转化卡片上。
+18. **报价表单的来意走 `src/lib/quote-intent.ts` 白名单**：卡片 CTA = `/quote?intent=design-help`，报价页解析后渲染顶部说明 + 预填 `notes`（QuoteForm 新增 `intent` 可选 prop）。只认白名单，用户手改的任意值不灌进表单（实测 `?intent=<script>` 无 banner 无预填）。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -132,7 +134,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 ## 7. 关键文件速查
 
 - 模板库（10 万级改造后）：**`src/lib/template-query.ts`**（分页/筛选/facet/深翻页上限/内容指纹/唯一 slug —— 所有列表查询只走这里）、`src/lib/template-slug.ts`（纯 slug 规则）、`src/components/ui/Pager.tsx`（前后台共用，`lang: 'en'|'zh'`）、`src/components/design/TemplateCard.tsx`（前台卡片）、`src/app/[locale]/admin/templates/page.tsx`（表格 + URL 驱动的单表单：`?q=&type=&page=&edit=&new=`）
-- 免费设计引导：`src/components/design/FreeDesignCallout.tsx`（一份文案三个密度：`banner`=/design 与 /design/[type] 顶部横条、`rail`=引导页左栏竖卡、`strip`=编辑器左工具栏紧凑条；CTA 全指 `/quote`，口径是 “Free with any order”）
+- 免费设计引导：`src/components/design/FreeDesignCallout.tsx`（一份文案三个密度：`banner`=/design 与 /design/[type] 顶部横条、`rail`=引导页左栏竖卡、`strip`=编辑器左工具栏紧凑条）。主 CTA = `/quote?intent=design-help`；第二入口（mailto）只在 `NEXT_PUBLIC_SALES_EMAIL` 配了真邮箱才渲染。口径：“Free with any order”，不承诺无条件免费打样。配套：`src/lib/contact.ts`、`src/lib/quote-intent.ts`
 - 设计器：`src/components/design/{useFabricCanvas,DesignCanvas,DesignStudio,ObjectPropertiesPanel,PreflightPanel,GuideOverlay}.tsx/ts` · `src/features/design/actions.ts` · `src/app/[locale]/design/{page,[productType]/page}.tsx` · `src/app/[locale]/account/designs/page.tsx`
 - 快速定制：`src/app/[locale]/customize/[templateSlug]/page.tsx` · `src/components/design/{GuidedStudio,GuidedWorkspace,useDesignSave}.tsx/ts` · `src/components/product/DesignPendingHint.tsx`
 - 桥接：`src/lib/design-bridge.ts`（localStorage `pp_order_design` 唯一入出口：`useDesignBridge/saveDesignBridge/clearDesignBridge`）· `src/components/ui/AttachedDesignNote.tsx`（表单上展示挂的是哪份 + don’t attach）· `src/components/product/DesignPendingHint.tsx`（/products 列表页黄条）· `src/components/quote/{ProductConfigurator,QuoteForm}.tsx` · `src/features/{order,quote}/actions.ts`（designId 落库）
