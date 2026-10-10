@@ -14,11 +14,13 @@ import type { NavGroup } from '@/lib/megaMenu';
 //    消除按钮与面板间的空隙）。面板是该 div 的 DOM 后代，所以鼠标从按钮移到面板不会误关；
 //    移到 Home / Logo / Quote 等任何其它头部元素都会离开触发区 → 自动关闭。
 //    以前靠 onMouseEnter + setState：脚本没跑起来（或还没水合）就完全弹不出来，实测踩过。
-// 2) 左列切右列：右列每个分类各一块面板，靠 globals.css 里的 :has() + :nth-child(n) 与左列一一对应，
-//    悬停哪一项就显示哪一块 —— 同样是纯 CSS，零 JS。
-//    以前是「右列只渲染 active 那一块 + setState 切 index」，一没 JS 就卡在第一个分类（实测踩过）。
-// 3) 没悬停任何分类时的静止态 = 第一个分类；一旦左列有项被 hover，CSS 把静止态让位给对应面板。
-//    左列项与右列面板靠 :nth-child(n) 一一对应（见 globals.css），不写死分类名、也不依赖像素偏移。
+// 2) 左列切右列：每个分类的面板放在**该分类自己的 <li> 里**，绝对定位投送到右列，靠 `li:hover` 显示。
+//    零 JS、零水合依赖；而且鼠标从菜单滑到面板上时 hover 不会断（面板是 li 的后代）。
+//    以前两种写法都会“跳内容”：靠 setState 切 → 没 JS 就卡在第一个分类；
+//    面板放右列 → 鼠标穿过列间隙时没有任何 li 被 hover，面板当场跳回第一块。
+// 3) 没悬停任何分类时的静止态 = 右列那块默认面板（第一个分类）；左列一有项被 hover 就把它收掉。
+//    左列项之间的间隙走 li 自己的 padding（不用 space-y-1）—— 外边距会造出不属于任何 li 的空域，
+//    鼠标经过时没人被 hover，静止态会闪一下（看起来就是“内容跳”）。
 //
 // 左列不给内部滚动条（11 个分类全部展开）；面板总高写死，内容高的分类由右列自己滚动（见 globals.css）。
 
@@ -120,33 +122,37 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
                         {/* Mega Menu 面板（常驻 DOM，靠 visibility 切换 → 没水合也能悬停弹出） */}
                         <div className={`${PANEL} ${open ? PANEL_ON : `${PANEL_OFF} ${PANEL_HOVER}`}`}>
                             <div className="h-1 w-full bg-[#ffec5a]" />
-                            <div className="mega-grid container-site grid grid-cols-[220px_minmax(0,1fr)] gap-8 py-8">
+                            <div className="mega-grid container-site relative grid grid-cols-[220px_minmax(0,1fr)] gap-8 py-8">
                                 {/* Left: 分类列表。全部展开，不参与面板高度计算 */}
                                 <div className="mega-left">
                                     <p className="mb-3 px-3 text-xs font-bold uppercase tracking-wide text-neutral-400">{t('products')}</p>
-                                    <ul className="space-y-1">
+                                    <ul>
                                         {groups.map((g) => (
-                                            <li key={g.id} className="mega-cat group/cat relative">
+                                            // 间隙放进 li 自己的 padding（而不是 space-y-1 的外边距）：
+                                            // 外边距会在两项之间留出不属于任何 li 的空域，鼠标经过时没人被 hover
+                                            // → 静止态面板闪一下，看起来就是“内容跳”（用户报的正是这个）
+                                            <li key={g.id} className="mega-cat group/cat relative py-0.5">
                                                 <span className="flex w-full cursor-default items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium text-neutral-600 transition group-hover/cat:bg-[#ffec5a] group-hover/cat:text-neutral-900">
                                                     {g.label}
                                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-neutral-300 group-hover/cat:text-neutral-900">
                                                         <path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                                     </svg>
                                                 </span>
+
+                                                {/* 该分类的面板：绝对定位到右列（位置由 globals.css 的变量算），
+                                                    只有自己的 li 被 hover 时出现；鼠标从菜单滑进面板不会断 hover */}
+                                                <div className="mega-panel">
+                                                    <CategoryPanel g={g} viewAll={t('viewAll')} />
+                                                </div>
                                             </li>
                                         ))}
                                     </ul>
                                 </div>
 
-                                {/* Right: 每个分类一块面板，与左列 :nth-child 一一对应。
-                                    静止态只显示第一块，悬停哪一项就换哪一块（全 CSS，零 JS）；
-                                    比面板高的分类在 .mega-right 内部滚动，不会顶高整块面板 */}
-                                <div className="mega-right">
-                                    {groups.map((g) => (
-                                        <div key={g.id} className="mega-panel">
-                                            <CategoryPanel g={g} viewAll={t('viewAll')} />
-                                        </div>
-                                    ))}
+                                {/* Right: 静止态（没悬停任何分类时）显示第一个分类；
+                                    内容高过面板时自己滚，不会顶高整块面板 */}
+                                <div className="mega-default">
+                                    {groups[0] && <CategoryPanel g={groups[0]} viewAll={t('viewAll')} />}
                                 </div>
                             </div>
                         </div>

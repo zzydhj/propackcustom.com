@@ -67,53 +67,59 @@ body {
 
 /* Mega Menu：面板总高写死，不让它由内容决定 —— 否则左列 11 项（≈470px）与右列各分类
    （从 1 个子分类到 3 个子分类，差好几倍）取大者，悬停换分类时整块面板会跳高度。
-   左列不滚动（分类全部可见）；右列自己滚动。视口很矮时左列才允许滚动兑底，避免分类被切掉。 */
+   尺寸变量与 container-site 的内边距保持一致（1536px 以上换成 2rem），
+   这样绝对定位的面板能精确对齐右列，不靠手调像素。 */
 .mega-grid {
+  --mega-pad: 1.25rem;
+  --mega-left-w: 220px;
+  --mega-gap: 2rem;
   height: min(600px, calc(100vh - 104px));
 }
 
+@media (min-width: 1536px) {
+  .mega-grid {
+    --mega-pad: 2rem;
+  }
+}
+
+/* 视口很矮时左列才允许滚动兜底，避免分类被切掉 */
 .mega-left {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-.mega-right {
+/* 每个分类的面板留在**自己的 li 里**，绝对定位投送到右列位置。
+   为什么不放右列：DOM 后代关系让「鼠标从菜单移到面板」仍然是 hover 该分类；
+   放右列就得穿过 2rem 列间隙，那一路没有任何 li 被 hover → 面板当场跳回第一块（实测踩过）。
+   left 从列边缘起算，把这段间隙也盖进面板命中区，鼠标经过时 hover 不断。 */
+.mega-cat>.mega-panel {
+  display: none;
+  position: absolute;
+  top: 2rem;
+  bottom: 2rem;
+  left: calc(var(--mega-pad) + var(--mega-left-w));
+  right: var(--mega-pad);
+  padding-left: var(--mega-gap);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  /* 预留滚动条槽：否则出/不出滚动条会让内容宽度横向抖 15px */
+}
+
+.mega-cat:hover>.mega-panel {
+  display: block;
+}
+
+/* 静止态：没悬停任何分类时显示右列那块默认面板（= 第一个分类）。
+   悬停时收掉它让位给对应面板；两者内容相同，所以鼠标在第一项附近不会闪。 */
+.mega-default {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 0.5rem;
-  /* 预留滚动条槽：否则某些分类出滚动条、某些不出，右列内容宽度会横向抖 15px */
   scrollbar-gutter: stable;
 }
 
-/* 左列分类与右列面板靠 :nth-child(n) 一一对应，整块交互零 JS、零水合依赖。
-   静止态只显第一块；左列任一分类被悬停 → 收起全部，再按同序展开对应那一块。
-   （Tailwind 的 group-hover 做不到“跨列联动第 n 块”，所以这三条规则放在这里，而不是堆到 className 上）
-   :has() 主流浏览器已全部支持；不支持时退化为“只看到第一块”，不会坏掉。 */
-.mega-panel {
+.mega-grid:has(.mega-cat:hover) .mega-default {
   display: none;
-}
-
-.mega-panel:first-child {
-  display: block;
-}
-
-.mega-grid:has(.mega-cat:hover) .mega-panel {
-  display: none;
-}
-
-.mega-grid:has(.mega-cat:nth-child(1):hover) .mega-panel:nth-child(1),
-.mega-grid:has(.mega-cat:nth-child(2):hover) .mega-panel:nth-child(2),
-.mega-grid:has(.mega-cat:nth-child(3):hover) .mega-panel:nth-child(3),
-.mega-grid:has(.mega-cat:nth-child(4):hover) .mega-panel:nth-child(4),
-.mega-grid:has(.mega-cat:nth-child(5):hover) .mega-panel:nth-child(5),
-.mega-grid:has(.mega-cat:nth-child(6):hover) .mega-panel:nth-child(6),
-.mega-grid:has(.mega-cat:nth-child(7):hover) .mega-panel:nth-child(7),
-.mega-grid:has(.mega-cat:nth-child(8):hover) .mega-panel:nth-child(8),
-.mega-grid:has(.mega-cat:nth-child(9):hover) .mega-panel:nth-child(9),
-.mega-grid:has(.mega-cat:nth-child(10):hover) .mega-panel:nth-child(10),
-.mega-grid:has(.mega-cat:nth-child(11):hover) .mega-panel:nth-child(11),
-.mega-grid:has(.mega-cat:nth-child(12):hover) .mega-panel:nth-child(12) {
-  display: block;
 }

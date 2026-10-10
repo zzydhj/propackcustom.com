@@ -167,7 +167,17 @@ if (!trim) {
 /** pdf.js 类型暴光不全的图层条目，自己定形状（不用 any） */
 type OcGroup = { id?: number; name?: string; visible?: boolean };
 // 不写 any 注解：pdfjs-dist v6 自带类型，让它自己推
-const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
+// cMapUrl / standardFontDataUrl 重注：不给它们，CJK 子集字体解不出来
+// （实测：牙签旗.ai 报 “Ensure that the `cMapUrl` API parameter is provided.” 然后 TEXT runs=0）
+const PDF_ASSETS = new URL('../node_modules/pdfjs-dist/', import.meta.url);
+const pdf = await pdfjs
+    .getDocument({
+        data: new Uint8Array(bytes),
+        cMapUrl: new URL('cmaps/', PDF_ASSETS).pathname.replace(/^\/(\w:)/i, '$1'),
+        cMapPacked: true,
+        standardFontDataUrl: new URL('standard_fonts/', PDF_ASSETS).pathname.replace(/^\/(\w:)/i, '$1'),
+    })
+    .promise;
 const page = await pdf.getPage(1);
 const OPS: Record<string, number> = pdfjs.OPS;
 
@@ -283,6 +293,20 @@ const bleedMm = boxes.bleed ? +(((boxes.bleed.width - trim.width) / 2) * PT_TO_M
 const outside = (r: TextRun) => r.xMm < -0.5 || r.topMm < -0.5 || r.xMm > mm(trim.width) + 0.5 || r.topMm > mm(trim.height) + 0.5;
 const outOfTrim = runs.filter(outside);
 
+/** 乱码判定：子集字体既无 ToUnicode 又无 CMap 时，pdf.js 会回回控制码区的字符。
+ * 导入器必须能区分“读到文字”与“读到垃圾”，不能把乱码当文案入库。 */
+const garbled = (s: string) => {
+    const chars = [...s];
+    if (!chars.length) return false;
+    const bad = chars.filter((c) => {
+        const cp = c.codePointAt(0) ?? 0;
+        return cp < 0x20 || (cp >= 0x7f && cp < 0xa1);
+    }).length;
+    return bad / chars.length > 0.3;
+};
+const garbledRuns = runs.filter((r) => garbled(r.text)).length;
+const readableRatio = runs.length ? +((runs.length - garbledRuns) / runs.length).toFixed(2) : 1;
+
 const report = {
     file: target,
     sha12: sha,
@@ -291,6 +315,8 @@ const report = {
     producer: doc.getProducer(),
     creator: doc.getCreator(),
     pageCount: doc.getPageCount(),
+    // 页面旋转：A4 竖版上出现跳至 297mm 的路径就是 Rotate 在作怪，不处理会导致坐标整体错位
+    pageRotate: (page as unknown as { rotate?: number }).rotate ?? doc.getPage(0).getRotation().angle,
     boxesPt: boxes,
     derived: {
         widthMm: mm(trim.width),
@@ -305,7 +331,7 @@ const report = {
     images: { count: images.length, megaPixels: +(imageMPix / 1e6).toFixed(2), sample: images.slice(0, 10) },
     operatorHistogram: opHistogram,
     pathArgShape,
-    textRuns: { total: runs.length, sample: runs.slice(0, 20), outsideTrim: outOfTrim.length },
+    textRuns: { total: runs.length, sample: runs.slice(0, 20), outsideTrim: outOfTrim.length, garbled: garbledRuns, readableRatio },
     vectorPaths: { total: paths.length, sample: paths.slice(0, 20) },
     layers: [...byLayer.entries()].map(([layer, v]) => ({ layer, ...v })),
     verdict: {
@@ -321,6 +347,8 @@ const report = {
         markedContentTagged: (opHistogram.beginMarkedContent ?? 0) > 0,
         rasterOnly: (opHistogram.constructPath ?? 0) === 0 && xobjects.some((x) => x.subtype === 'Image'),
         publishableDraft: runs.length > 0 && !!boxes.trim,
+        // 文字可读比例低于 0.6 就不该自动上架（子集字体无 ToUnicode/CMap 时读到的是垃圾）
+        textReadable: runs.length > 0 && readableRatio >= 0.6,
     },
 };
 
@@ -329,7 +357,7 @@ const outFile = `scripts/out/${sha}-ai-report.json`;
 writeFileSync(outFile, JSON.stringify(report, null, 2), 'utf8');
 
 console.log(`FILE            ${ascii(target.split(/[\\/]/).pop() ?? target)} sizeMB=${report.sizeMB} sha12=${sha} pages=${report.pageCount}`);
-console.log(`PDF             version=%PDF-${header} producer=${ascii(doc.getProducer() ?? '')}`);
+console.log(`PDF             version=%PDF-${header} rotate=${report.pageRotate} producer=${ascii(doc.getProducer() ?? '')}`);
 console.log(`CREATOR         ${ascii(doc.getCreator() ?? '')}`);
 console.log(`BOX pt          trim=${JSON.stringify(boxes.trim)} bleed=${JSON.stringify(boxes.bleed)}`);
 console.log(`BOX pt          crop=${JSON.stringify(boxes.crop)} media=${JSON.stringify(boxes.media)}`);
@@ -344,7 +372,7 @@ console.log(`IMAGES(all)     count=${images.length} megaPixels=${+(imageMPix / 1
 for (const im of images.slice(0, 10)) console.log(`  - ${im.w}x${im.h} bpc=${im.bpc} cs=${ascii(im.cs)}`);
 console.log(`OPS             ${JSON.stringify(opHistogram)}`);
 for (const s of pathArgShape) console.log(`PATH-ARG-SHAPE  ${s}`);
-console.log(`TEXT            runs=${runs.length} outsideTrim=${outOfTrim.length}`);
+console.log(`TEXT            runs=${runs.length} outsideTrim=${outOfTrim.length} garbled=${garbledRuns} readable=${report.textRuns.readableRatio}`);
 for (const r of runs.slice(0, 20)) console.log(`  [${ascii(r.layer)}] ${ascii(r.text)} @${r.xMm},${r.topMm} size=${r.sizeMm}mm font=${r.font}`);
 console.log(`PATHS           unpacked=${paths.length} of ops=${opHistogram.constructPath ?? 0}`);
 for (const p of paths.slice(0, 12)) console.log(`  [${ascii(p.layer)}] pts=${p.points} box=(${p.x0},${p.y0})-(${p.x1},${p.y1})mm`);
