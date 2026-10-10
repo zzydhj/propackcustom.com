@@ -1,4 +1,6 @@
 import { Link } from '@/navigation';
+import { customerContactEmail } from '@/lib/contact';
+import { quoteHref } from '@/lib/quote-intent';
 
 // Design Studio 的「免费设计服务」引导卡。文案与视觉只在这里维护一份，四个版面共用：
 //   banner —— 模板库顶部横条（文案 + 右侧 CTA，窄屏自动堆叠）
@@ -12,6 +14,22 @@ const TITLE = 'text-lg font-black text-neutral-900';
 const BODY = 'text-sm leading-relaxed text-neutral-600';
 const CTA = 'rounded-lg bg-neutral-900 py-3 text-center text-sm font-bold text-white transition hover:bg-neutral-800';
 const NOTE = 'text-xs text-neutral-500';
+const MAILTO = 'mt-2 block text-center text-xs font-semibold text-neutral-700 underline decoration-[#ffec5a] decoration-2 underline-offset-4 hover:text-neutral-900';
+
+// 主 CTA 带上 intent，销售在后台能看出这是“要设计帮助”而不是普通询价
+const QUOTE_URL = quoteHref('design-help');
+const MAIL_SUBJECT = 'Free design help request';
+
+/** 第二入口：只有配了可回复的业务邮箱才渲染（NEXT_PUBLIC_SALES_EMAIL）；no-reply 会被过滤掉 */
+function EmailLine({ className = '' }: { className?: string }) {
+    const email = customerContactEmail();
+    if (!email) return null;
+    return (
+        <a href={`mailto:${email}?subject=${encodeURIComponent(MAIL_SUBJECT)}`} className={`${MAILTO} ${className}`}>
+            Or email us: {email}
+        </a>
+    );
+}
 
 const COPY = {
     eyebrow: 'No design skills? No problem',
@@ -47,7 +65,7 @@ export function FreeDesignCallout({
                 <p className="mt-1 text-[11px] leading-snug text-neutral-600">
                     Our studio preps your artwork and dieline at no charge with any order.
                 </p>
-                <Link href="/quote" className="mt-2 block rounded-md bg-neutral-900 py-2 text-center text-[11px] font-bold text-white transition hover:bg-neutral-800">
+                <Link href={QUOTE_URL} className="mt-2 block rounded-md bg-neutral-900 py-2 text-center text-[11px] font-bold text-white transition hover:bg-neutral-800">
                     {COPY.cta}
                 </Link>
             </div>
@@ -60,10 +78,11 @@ export function FreeDesignCallout({
                 <p className={EYEBROW}>{COPY.eyebrow}</p>
                 <h3 className={`mt-1 ${TITLE}`}>{COPY.title}</h3>
                 <p className={`mt-2 ${BODY}`}>{COPY.body}</p>
-                <Link href="/quote" className={`mt-4 block ${CTA}`}>
+                <Link href={QUOTE_URL} className={`mt-4 block ${CTA}`}>
                     {COPY.cta}
                 </Link>
                 <p className={`mt-2 text-center ${NOTE}`}>{COPY.note}</p>
+                <EmailLine />
             </div>
         );
     }
@@ -79,10 +98,11 @@ export function FreeDesignCallout({
                 <p className={`mt-1.5 max-w-3xl ${BODY}`}>{COPY.body}</p>
             </div>
             <div className="shrink-0 sm:w-60">
-                <Link href="/quote" className={`block ${CTA}`}>
+                <Link href={QUOTE_URL} className={`block ${CTA}`}>
                     {COPY.cta}
                 </Link>
                 <p className={`mt-2 text-center ${NOTE}`}>{COPY.note}</p>
+                <EmailLine />
             </div>
         </div>
     );

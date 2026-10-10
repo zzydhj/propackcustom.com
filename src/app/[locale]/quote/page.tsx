@@ -1,18 +1,32 @@
 import { useTranslations } from 'next-intl';
 import { setRequestLocale } from 'next-intl/server';
 import { QuoteForm } from '@/components/quote/QuoteForm';
+import { QUOTE_INTENTS, parseQuoteIntent, type QuoteIntent } from '@/lib/quote-intent';
 
-export default function QuotePage({ params }: { params: Promise<{ locale: string }> }) {
-  return <Quote params={params} />;
+export default function QuotePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ intent?: string | string[] }>;
+}) {
+  return <Quote params={params} searchParams={searchParams} />;
 }
 
-async function Quote({ params }: { params: Promise<{ locale: string }> }) {
+async function Quote({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ intent?: string | string[] }>;
+}) {
   const { locale } = await params;
+  const intent = parseQuoteIntent((await searchParams).intent);
   setRequestLocale(locale);
-  return <QuoteContent />;
+  return <QuoteContent intent={intent} />;
 }
 
-function QuoteContent() {
+function QuoteContent({ intent }: { intent?: QuoteIntent }) {
   const t = useTranslations('QuoteForm');
   return (
     <main className="mx-auto max-w-5xl px-5 py-16 2xl:px-12">
@@ -22,9 +36,15 @@ function QuoteContent() {
         </span>
         <h1 className="mt-4 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">{t('title')}</h1>
         <p className="mx-auto mt-3 max-w-xl text-neutral-600">{t('subtitle')}</p>
+        {/* 从 Design Studio 的“免费设计”卡片过来时会带 intent：顶部说明 + 备注预填，客户不用从零写 */}
+        {intent && (
+          <p className="mx-auto mt-5 max-w-2xl rounded-lg border-2 border-[#ffec5a] bg-[#fff7bd] px-4 py-2.5 text-sm font-medium text-neutral-800">
+            {QUOTE_INTENTS[intent].banner}
+          </p>
+        )}
       </div>
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
-        <QuoteForm />
+        <QuoteForm intent={intent} />
       </div>
     </main>
   );

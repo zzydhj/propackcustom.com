@@ -5,8 +5,9 @@ import { useActionState } from 'react';
 import { submitRfq, type RfqState } from '@/features/quote/actions';
 import { useDesignBridge } from '@/lib/design-bridge';
 import { AttachedDesignNote } from '@/components/ui/AttachedDesignNote';
+import { QUOTE_INTENTS, type QuoteIntent } from '@/lib/quote-intent';
 
-export function QuoteForm() {
+export function QuoteForm({ intent }: { intent?: QuoteIntent }) {
   const t = useTranslations('QuoteForm');
   const [state, formAction, pending] = useActionState<RfqState | null, FormData>(submitRfq, null);
   const designId = useDesignBridge();
@@ -52,7 +53,7 @@ export function QuoteForm() {
         <input name="email" type="email" required className={inputCls} placeholder="you@company.com" />
       </Field>
       <Field label={t('notes')} error={err('notes')} className="sm:col-span-2">
-        <textarea name="notes" rows={4} className={inputCls} placeholder={t('notesPlaceholder')} />
+        <textarea name="notes" rows={5} className={inputCls} placeholder={t('notesPlaceholder')} defaultValue={intent ? QUOTE_INTENTS[intent].note : undefined} />
       </Field>
       <div className="sm:col-span-2">
         <button
