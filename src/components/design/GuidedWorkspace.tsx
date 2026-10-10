@@ -38,6 +38,7 @@ export default function GuidedWorkspace({
     const {
         canvasElRef, ready, zoom, applyZoom, importJSON,
         fields, setFieldText, setFieldImage, removeObject, addImage,
+        imageBusy, imageNote,
         exportJSON,
     } = useFabricCanvas({ widthMm, heightMm, bleedMm, safeAreaMm, dielineSvg, fullBleed, lockEditing: true });
     const { savedId, saving, msg, save } = useDesignSave({
@@ -109,8 +110,8 @@ export default function GuidedWorkspace({
                     <div className="grid gap-2 border-t border-neutral-100 pt-4">
                         <span className="text-sm text-neutral-600">{t('logoLabel')}</span>
                         <div className="flex gap-2">
-                            <button type="button" className={ctaGhost} onClick={() => fileRef.current?.click()}>
-                                {imageField ? t('logoReplace') : t('logoAdd')}
+                            <button type="button" className={ctaGhost} disabled={imageBusy} onClick={() => fileRef.current?.click()}>
+                                {imageBusy ? t('preparingImage') : (imageField ? t('logoReplace') : t('logoAdd'))}
                             </button>
                             {imageField && (
                                 <button
@@ -135,6 +136,8 @@ export default function GuidedWorkspace({
                             }}
                         />
                         <p className="text-xs text-neutral-400">{t('logoHint')}</p>
+                        {/* 大图会被压成有界工作图（不卡编辑、也不撑爆保存），这行让客户知道发生了什么 */}
+                        {imageNote && <p className="text-[11px] text-neutral-500">{imageNote}</p>}
                     </div>
 
                     {msg && <p className="text-xs text-neutral-500">{msg}</p>}

@@ -5,6 +5,8 @@ import { Canvas, FabricImage, Textbox } from 'fabric';
 import type { FabricObject } from 'fabric';
 import { outOfCmykGamut } from '@/lib/color-gamut';
 import { coversRegion, dieRegions as buildDieRegions, parseDieShape, regionContains, regionOverlaps, type DieObject } from '@/lib/dieline';
+import { assetAsDataUrl, isRemoteAsset, storeWorkingImage } from '@/lib/design-asset';
+import { formatBytes, toWorkingImage } from '@/lib/working-image';
 
 // 预览基准：1mm = 8px（≈200dpi 预览，桌面画布显示更大；导出 PNG 用 multiplier 达 300dpi+，矢量 PDF 走后端链）
 // 单位常量收在 src/lib/scene-units.ts（服务端/脚本也要用，不能从本文件拉走整个 Fabric）；
@@ -16,6 +18,9 @@ import { PX_PER_MM } from '@/lib/scene-units';
 // 大模板（200×150mm = 1600×1200px）缩小后能整张看下，放大后由外层 overflow 容器出滚动条当平移。
 export const ZOOM_MIN = 0.2;
 export const ZOOM_MAX = 4;
+
+/** 撤销栈上限：图已改成引用（不再堆 base64），但几百个对象的场景 JSON 也不小，无上限仍会涨 */
+export const HISTORY_MAX = 60;
 
 type Opts = {
     widthMm?: number;
@@ -67,13 +72,14 @@ function isLocked(o: object): boolean {
     return Boolean((o as { locked?: unknown }).locked);
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-    return new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(String(r.result));
-        r.onerror = () => rej(r.error);
-        r.readAsDataURL(file);
-    });
+/**
+ * 从导出的 SVG 里挑出**外链**图片地址（Fabric 把 image 的 src 原样写进 href）。
+ * 画布改用同源代理后，这些地址在 Ai/Inkscape/印厂手里是断链 —— 交出去前必须换成 dataURL。
+ */
+function externalImageHrefs(svg: string): string[] {
+    const found = [...svg.matchAll(/(?:xlink:)?href="([^"]+)"/g)].map((m) => m[1]);
+    // 长的先换：短地址可能是长地址的前缀（同一目录下的两张图）
+    return [...new Set(found.filter(isRemoteAsset))].sort((a, b) => b.length - a.length);
 }
 
 /** 属性面板要读的选中对象快照（只有单选才有；多选/空白返回 null） */
@@ -142,7 +148,8 @@ export function useFabricCanvas(opts: Opts = {}) {
     const history = useRef<{ stack: string[]; idx: number }>({ stack: [], idx: -1 });
     const restoring = useRef(false); // 程序化还原时抑制 object:added 回写历史
     // 历史指针放 state（渲染期不读 ref），快照本体留在 ref 里
-    const [hmeta, setHmeta] = useState({ len: 0, idx: -1 });
+    // bytes = 栈内全部快照的字符数：「大文件会不会吃内存」的直接读数，UI 底部也拿它做提示
+    const [hmeta, setHmeta] = useState({ len: 0, idx: -1, bytes: 0 });
     const [active, setActive] = useState<ActiveTarget | null>(null);
     const [selectionCount, setSelectionCount] = useState(0);
     const recordTimer = useRef<number | null>(null);
@@ -151,6 +158,10 @@ export function useFabricCanvas(opts: Opts = {}) {
     const [fields, setFields] = useState<DesignField[]>([]);
     const [layers, setLayers] = useState<LayerInfo[]>([]);
     const [activeIndex, setActiveIndex] = useState<number | null>(null);
+    // 图片处理状态：选完大图要等解码+压缩+存桶，这段时间按钮该禁用；
+    // imageNote 同时是量测读数（原图→工作图多少字节），客户看得到、验收也量得到
+    const [imageBusy, setImageBusy] = useState(false);
+    const [imageNote, setImageNote] = useState('');
 
     const baseW = Math.round(widthMm * PX_PER_MM);
     const baseH = Math.round(heightMm * PX_PER_MM);
@@ -255,17 +266,19 @@ export function useFabricCanvas(opts: Opts = {}) {
     const record = useCallback((c: Canvas) => {
         if (restoring.current) return;
         const snap = JSON.stringify(c.toObject([...SCENE_PROPS]));
-        // 丢弃 redo 分支
-        const stack = history.current.stack.slice(0, history.current.idx + 1).concat(snap);
+        // 丢弃 redo 分支，再按上限裁掉最旧的（从头部裁不影响 idx 永远指末尾这个关系）
+        let stack = history.current.stack.slice(0, history.current.idx + 1).concat(snap);
+        if (stack.length > HISTORY_MAX) stack = stack.slice(stack.length - HISTORY_MAX);
         history.current = { stack, idx: stack.length - 1 };
-        setHmeta({ len: stack.length, idx: stack.length - 1 });
+        setHmeta({ len: stack.length, idx: stack.length - 1, bytes: stack.reduce((n, s) => n + s.length, 0) });
         runPreflight(c);
         refreshFields(c);
     }, [refreshFields, runPreflight]);
 
     const resetHistory = useCallback((c: Canvas) => {
-        history.current = { stack: [JSON.stringify(c.toObject([...SCENE_PROPS]))], idx: 0 };
-        setHmeta({ len: 1, idx: 0 });
+        const snap = JSON.stringify(c.toObject([...SCENE_PROPS]));
+        history.current = { stack: [snap], idx: 0 };
+        setHmeta({ len: 1, idx: 0, bytes: snap.length });
     }, []);
 
     // 拖滑块/连续微调不能每改一个像素就推一次历史 → 合并成一次
@@ -327,7 +340,7 @@ export function useFabricCanvas(opts: Opts = {}) {
             syncSelection(c);
             runPreflight(c); // 还原期间 object:added 被抑制，预检与字段要主动重跑
             refreshFields(c);
-            setHmeta({ len: history.current.stack.length, idx: history.current.idx });
+            setHmeta({ len: history.current.stack.length, idx: history.current.idx, bytes: history.current.stack.reduce((n, s) => n + s.length, 0) });
         });
     }, [refreshFields, runPreflight, syncSelection]);
 
@@ -354,11 +367,40 @@ export function useFabricCanvas(opts: Opts = {}) {
         syncSelection(c);
     }, [baseW, baseH, lockEditing, syncSelection]);
 
+    /**
+     * 客户选中的文件 → 可以直接交给 Fabric 的 src。
+     * 先压成有界工作图（见 src/lib/working-image），再优先存进 R2 换**同源代理地址**；
+     * 存储不可用就退回工作图的 dataURL —— 两条路都不会再把客户原图的 base64 塞进 sceneJson。
+     */
+    const prepareImage = useCallback(async (file: File): Promise<string | null> => {
+        setImageBusy(true);
+        try {
+            let work;
+            try {
+                work = await toWorkingImage(file);
+            } catch {
+                setImageNote('That image could not be read — try a JPG or PNG exported from your design tool.');
+                return null;
+            }
+            const stem = file.name.replace(/\.[^.]+$/, '') || 'image';
+            const hint = `${stem}.${work.mime === 'image/png' ? 'png' : 'jpg'}`;
+            const stored = await storeWorkingImage(work.blob, hint);
+            const shrink = `${formatBytes(work.originalBytes)} → ${formatBytes(work.blob.size)} · ${work.width}×${work.height}px`;
+            setImageNote(stored
+                ? `${shrink} · stored in cloud (the scene keeps a link, not the pixels)`
+                : `${shrink} · kept in this browser (file storage not configured)`);
+            return stored ?? (await work.dataUrl());
+        } finally {
+            setImageBusy(false);
+        }
+    }, []);
+
     const addImage = useCallback(async (file: File) => {
         const c = canvasRef.current;
         if (!c) return;
-        const dataUrl = await readFileAsDataUrl(file);
-        const img = await FabricImage.fromURL(dataUrl);
+        const src = await prepareImage(file);
+        if (!src) return;
+        const img = await FabricImage.fromURL(src);
         const w = (img.width ?? 100);
         const h = (img.height ?? 100);
         // 同样用场景尺寸算缩放与落点，不受 UI zoom 影响；并显式左上角为基准居中到刀版内
@@ -375,7 +417,7 @@ export function useFabricCanvas(opts: Opts = {}) {
         if (!lockEditing) c.setActiveObject(img);
         c.requestRenderAll();
         syncSelection(c);
-    }, [baseW, baseH, lockEditing, syncSelection]);
+    }, [baseW, baseH, lockEditing, prepareImage, syncSelection]);
 
     const removeActive = useCallback(() => {
         const c = canvasRef.current;
@@ -519,17 +561,18 @@ export function useFabricCanvas(opts: Opts = {}) {
         const c = canvasRef.current;
         const o = c?.getObjects()[index];
         if (!c || !(o instanceof FabricImage)) return;
-        const dataUrl = await readFileAsDataUrl(file);
+        const src = await prepareImage(file);
+        if (!src) return;
         // 先记住客户看到的占位尺寸，换图后按原矩形回填，避免客户一改图就撑破版面
         const footprintW = o.getScaledWidth();
         const footprintH = o.getScaledHeight();
-        await o.setSrc(dataUrl);
+        await o.setSrc(src);
         o.scaleToWidth(footprintW);
         o.scaleToHeight(footprintH);
         o.setCoords();
         c.requestRenderAll();
         record(c);
-    }, [record]);
+    }, [prepareImage, record]);
 
     // 从预检列表点回画布：选中该对象（顶层下标）
     const selectObject = useCallback((index: number) => {
@@ -628,10 +671,22 @@ export function useFabricCanvas(opts: Opts = {}) {
     const exportPNG = useCallback((multiplier = 2) => withExportScene((c) => c.toDataURL({ format: 'png', multiplier })) ?? '', [withExportScene]);
 
     // 导出 SVG：根节点尺寸替换为物理毫米 + viewBox，保证 Ai/Inkscape/印厂打开即真实尺寸
-    const exportSVG = useCallback((): string => {
+    // 改成 async：交出去前要先内联图片 —— 画布里的图现在是 /api/asset/… 代理地址，
+    // 印厂拿到相对地址就是断图（PDF 走同一条导出链，所以一并依赖这一步）
+    const exportSVG = useCallback(async (): Promise<string> => {
         const svg = withExportScene((c) => c.toSVG());
         if (!svg) return '';
-        const raw = svg;
+        let filled = svg;
+        let unresolved = 0;
+        for (const url of externalImageHrefs(svg)) {
+            const dataUrl = await assetAsDataUrl(url);
+            if (!dataUrl) { unresolved++; continue; }
+            filled = filled.split(url).join(dataUrl);
+        }
+        if (unresolved) {
+            setImageNote(`${unresolved} image(s) could not be embedded — the vector file links them instead. Export PNG if unsure.`);
+        }
+        const raw = filled;
         const pxW = baseW;
         const pxH = baseH;
         const mmW = (pxW / PX_PER_MM).toFixed(2).replace(/\.?0+$/, '');
@@ -656,6 +711,8 @@ export function useFabricCanvas(opts: Opts = {}) {
         zoom, applyZoom,
         issues, selectObject,
         fields, setFieldText, setFieldImage, removeObject,
+        imageBusy, imageNote,
+        historySteps: hmeta.len, historyBytes: hmeta.bytes,
         layers, activeIndex, patchLayer, selectLayer, moveLayer, removeLayer,
         exportJSON, importJSON, exportPNG, exportSVG,
     };

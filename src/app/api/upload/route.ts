@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { allowedFor, clientIp } from '@/lib/rate-limit';
 import {
     MAX_UPLOAD_BYTES, isAllowedFileName, objectKey, presignPut, publicUrl, r2Enabled,
 } from '@/lib/r2';
@@ -13,29 +14,12 @@ export const dynamic = 'force-dynamic';
 
 const LIMIT_PER_HOUR = 20;
 
-async function rateLimited(ip: string): Promise<boolean> {
-    const url = process.env.UPSTASH_REDIS_URL;
-    const token = process.env.UPSTASH_REDIS_TOKEN;
-    if (!url || !token) return false; // 未配置则不限流（开发环境）
-    try {
-        const { Redis } = await import('@upstash/redis');
-        const redis = new Redis({ url, token });
-        const key = `upload:rl:${ip}`;
-        const n = await redis.incr(key);
-        if (n === 1) await redis.expire(key, 3600);
-        return n > LIMIT_PER_HOUR;
-    } catch {
-        return false; // 限流组件故障不应阻断业务
-    }
-}
-
 export async function POST(req: NextRequest) {
     if (!r2Enabled()) {
         return NextResponse.json({ ok: false, error: 'r2-disabled' }, { status: 503 });
     }
 
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    if (await rateLimited(ip)) {
+    if (!(await allowedFor(clientIp(req), LIMIT_PER_HOUR, 'upload'))) {
         return NextResponse.json({ ok: false, error: 'rate-limited' }, { status: 429 });
     }
 

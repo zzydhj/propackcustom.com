@@ -42,6 +42,7 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
         active, selectionCount, patchActive, alignActive, layerActive,
         zoom, applyZoom,
         issues, selectObject,
+        imageBusy, imageNote, historySteps, historyBytes,
         layers, activeIndex, patchLayer, selectLayer, moveLayer, removeLayer,
         exportJSON, importJSON, exportPNG, exportSVG,
     } = useFabricCanvas({ widthMm, heightMm, bleedMm, safeAreaMm, dielineSvg, fullBleed });
@@ -180,9 +181,11 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
     };
 
     // 矢量 SVG：物理毫米尺寸根节点，Ai/Inkscape 打开即真实尺寸，可转曲可转 PDF
-    const downloadSVG = () => {
-        const svg = exportSVG();
-        if (!svg) return;
+    // 图先内联再交出去（exportSVG 里做）：印厂拿到相对地址就是断图
+    async function downloadSVG() {
+        setStatus('Preparing vector file…');
+        const svg = await exportSVG();
+        if (!svg) { setStatus('SVG export failed — try Export PNG'); return; }
         // 印刷层包进 <g id="PRINT">，刀线单独一个非印刷 <g id="DIELINE">：印厂可整组开关，不会把裁切线印上去
         const blob = new Blob([svgWithDielineLayer(svg, prodMeta, PX_PER_MM)], { type: 'image/svg+xml' });
         const url = URL.createObjectURL(blob);
@@ -191,7 +194,8 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
         a.download = `${fileBase}.svg`;
         a.click();
         URL.revokeObjectURL(url);
-    };
+        setStatus('Production SVG saved ✓ (dieline on its own non-printing layer)');
+    }
 
     // 浏览器端直出 mm 精确 PDF（jspdf+svg2pdf 动态加载，不进首屏 bundle）
     async function downloadPDF() {
@@ -199,7 +203,7 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
         setStatus('Rendering PDF…');
         try {
             const [{ jsPDF }] = await Promise.all([import('jspdf'), import('svg2pdf.js')]);
-            const svg = exportSVG();
+            const svg = await exportSVG();
             if (!svg) throw new Error('empty svg');
             // svg2pdf 要求已解析的 SVGElement：传字符串会在 collectStyleSheetTexts 里炸（rootSvg.querySelectorAll 不存在）
             const svgEl = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
@@ -247,8 +251,12 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
 
                 <div className="space-y-2 border-t border-neutral-100 pt-3">
                     <button type="button" className={tool} onClick={addText}>+ Add text</button>
-                    <button type="button" className={tool} onClick={() => fileRef.current?.click()}>+ Upload image</button>
+                    <button type="button" className={tool} disabled={imageBusy} onClick={() => fileRef.current?.click()}>
+                        {imageBusy ? 'Preparing image…' : '+ Upload image'}
+                    </button>
                     <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void addImage(f); e.target.value = ''; }} />
+                    {/* 大图会被压成有界工作图并存进对象存储；这行就是给客户看的实测结果 */}
+                    {imageNote && <p className="text-[11px] text-neutral-500">{imageNote}</p>}
                     <button type="button" className={tool} onClick={removeActive}>Delete selected</button>
                 </div>
 
@@ -289,7 +297,7 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                     <button type="button" className={tool} onClick={() => jsonRef.current?.click()}>Import JSON</button>
                     <input ref={jsonRef} type="file" accept="application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then(importJSON); e.target.value = ''; }} />
                     <button type="button" className={tool} onClick={downloadJSON}>Export JSON</button>
-                    <button type="button" className={tool} onClick={downloadSVG}>Export SVG (vector)</button>
+                    <button type="button" className={tool} onClick={() => void downloadSVG()}>Export SVG (vector)</button>
                     <button type="button" className={tool} onClick={() => void downloadPDF()}>Export PDF (print)</button>
                     <button type="button" className={tool} onClick={downloadPNG}>Export PNG</button>
                 </div>
@@ -324,7 +332,10 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
                     </div>
                 )}
 
-                <p className="mt-auto pt-3 text-[11px] text-neutral-400">Fabric.js · 1mm = 8px at 100% · SVG/PDF export stays at print size regardless of zoom.</p>
+                <p className="mt-auto pt-3 text-[11px] text-neutral-400">
+                    Fabric.js · 1mm = 8px at 100% · SVG/PDF export stays at print size regardless of zoom.
+                    {historySteps > 0 && <> Undo history: {historySteps} steps · {(historyBytes / 1024).toFixed(0)} KB held in memory.</>}
+                </p>
             </aside>
 
             {/* 右栏：缩放工具条 + 画布工作区（放大后靠外层滚动条平移） */}

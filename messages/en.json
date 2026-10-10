@@ -107,6 +107,7 @@
     "logoReplace": "Replace logo",
     "logoRemove": "Remove",
     "logoHint": "PNG or JPG works; vector SVG prints sharpest. We place it inside the safe area automatically.",
+    "preparingImage": "Preparing image…",
     "quote": "Save & get expert quote",
     "product": "Save & order with a product",
     "saving": "Saving…",
