@@ -7,6 +7,7 @@ import {
     templateTypeFacets,
     type TemplateListItem,
 } from '@/lib/template-query';
+import { withQuery } from '@/lib/query-string';
 import { deleteTemplate, toggleTemplate } from '@/features/admin/actions';
 import { TemplateEditor } from '@/components/admin/TemplateEditor';
 import { Pager } from '@/components/ui/Pager';
@@ -17,15 +18,6 @@ export const dynamic = 'force-dynamic';
 const input = 'h-9 rounded-md border border-neutral-300 px-3 text-sm outline-none focus:border-neutral-900';
 const cellBtn =
     'rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 transition hover:border-neutral-900';
-
-/** 在当前筛选条件上覆盖若干参数拼查询串（分页/排序/编辑态都靠 URL，不用客户端状态） */
-function qs(base: Record<string, string | undefined>, over: Record<string, string | undefined>) {
-    const merged = { ...base, ...over };
-    const u = new URLSearchParams();
-    for (const [k, v] of Object.entries(merged)) if (v) u.set(k, v);
-    const s = u.toString();
-    return s ? `?${s}` : '';
-}
 
 export default async function AdminTemplatesPage({
     searchParams,
@@ -44,7 +36,7 @@ export default async function AdminTemplatesPage({
     // 编辑态用 URL 参数驱动，整页只渲染一个表单；表单要完整字段，所以单独按 id 取全量
     const editing = sp.edit ? await prisma.designTemplate.findUnique({ where: { id: sp.edit } }) : null;
 
-    const href = (p: number) => `/admin/templates${qs(sp, { page: String(p), edit: undefined })}`;
+    const href = (p: number) => `/admin/templates${withQuery(sp, { page: String(p), edit: undefined })}`;
     const hasFilter = Boolean(sp.q || sp.type);
 
     return (
@@ -57,7 +49,7 @@ export default async function AdminTemplatesPage({
                     </p>
                 </div>
                 {!sp.new && (
-                    <Link href={`/admin/templates${qs(sp, { new: '1', edit: undefined })}`} className={`${cellBtn} inline-flex items-center bg-neutral-900 text-white hover:bg-neutral-700`}>
+                    <Link href={`/admin/templates${withQuery(sp, { new: '1', edit: undefined })}`} className={`${cellBtn} inline-flex items-center bg-neutral-900 text-white hover:bg-neutral-700`}>
                         ＋ 新建模板
                     </Link>
                 )}
@@ -87,7 +79,7 @@ export default async function AdminTemplatesPage({
                 <section className="space-y-2 rounded-xl border border-neutral-900 bg-neutral-50 p-3">
                     <div className="flex items-center justify-between">
                         <h3 className="text-sm font-bold text-neutral-900">新建模板</h3>
-                        <Link href={`/admin/templates${qs(sp, { new: undefined })}`} className={cellBtn}>
+                        <Link href={`/admin/templates${withQuery(sp, { new: undefined })}`} className={cellBtn}>
                             关闭
                         </Link>
                     </div>
@@ -101,7 +93,7 @@ export default async function AdminTemplatesPage({
                         <h3 className="text-sm font-bold text-neutral-900">
                             编辑：{editing.name} <span className="font-mono text-xs text-neutral-500">/{editing.slug}</span>
                         </h3>
-                        <Link href={`/admin/templates${qs(sp, { edit: undefined })}`} className={cellBtn}>
+                        <Link href={`/admin/templates${withQuery(sp, { edit: undefined })}`} className={cellBtn}>
                             关闭
                         </Link>
                     </div>
@@ -179,7 +171,7 @@ export default async function AdminTemplatesPage({
                                     <td className="px-3 py-2 text-xs text-neutral-500">{t.updatedAt.toISOString().slice(0, 10)}</td>
                                     <td className="px-3 py-2">
                                         <div className="flex items-center justify-end gap-1.5">
-                                            <Link href={`/admin/templates${qs(sp, { edit: t.id })}`} className={cellBtn} scroll={false}>
+                                            <Link href={`/admin/templates${withQuery(sp, { edit: t.id })}`} className={cellBtn} scroll={false}>
                                                 编辑
                                             </Link>
                                             <form action={toggleTemplate} className="inline">

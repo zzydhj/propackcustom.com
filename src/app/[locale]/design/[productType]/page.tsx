@@ -2,14 +2,17 @@ import type { Metadata } from 'next';
 import { setRequestLocale } from 'next-intl/server';
 import { Link } from '@/navigation';
 import { prisma } from '@/lib/prisma';
+import { withQuery } from '@/lib/query-string';
 import { DesignStudio } from '@/components/design/DesignStudio';
 import { TemplateCard } from '@/components/design/TemplateCard';
+import { TemplateFilterBar } from '@/components/design/TemplateFilterBar';
 import { FreeDesignCallout } from '@/components/design/FreeDesignCallout';
 import { Pager } from '@/components/ui/Pager';
 import {
     TEMPLATE_PAGE_SIZE,
     TEMPLATE_LIST_SELECT,
     listTemplates,
+    templateTypeFacets,
     type TemplateListItem,
 } from '@/lib/template-query';
 
@@ -25,7 +28,7 @@ export async function generateMetadata({ params }: { params: Promise<{ productTy
     };
 }
 
-type Props = { params: Promise<{ locale: string; productType: string }>; searchParams: Promise<{ template?: string; design?: string; blank?: string; page?: string }> };
+type Props = { params: Promise<{ locale: string; productType: string }>; searchParams: Promise<{ template?: string; design?: string; blank?: string; page?: string; q?: string }> };
 
 export default async function DesignPage({ params, searchParams }: Props) {
     const { locale, productType } = await params;
@@ -86,11 +89,14 @@ export default async function DesignPage({ params, searchParams }: Props) {
 
     // 4) 有该类型模板：展示模板库供选择（服务端分页，非全屏）——一个类型下可能挂几千个模板
     const page = Math.max(1, Number(sp.page) || 1);
-    const list = await listTemplates<TemplateListItem>(
-        { productType, activeOnly: true, page, take: TEMPLATE_PAGE_SIZE },
-        TEMPLATE_LIST_SELECT,
-    );
-    if (list.total > 0) {
+    const [list, facets] = await Promise.all([
+        listTemplates<TemplateListItem>({ productType, q: sp.q, activeOnly: true, page, take: TEMPLATE_PAGE_SIZE }, TEMPLATE_LIST_SELECT),
+        // 胶囊的计数跟搜索词走，否则会出现“chip 写 48、点进去只有 3 个”
+        templateTypeFacets({ q: sp.q, activeOnly: true }),
+    ]);
+    // 带搜索词时即使 0 结果也要给列表页（要让用户看到“没匹配”并清掉搜索），
+    // 不能落到分支 5 的空白编辑器 —— 那等于把搜索失败伪装成“该分类没模板”
+    if (list.total > 0 || sp.q) {
         return (
             <main className="mx-auto max-w-[1440px] px-5 py-10 2xl:px-12">
                 {/* h1 带类型名：以前不管哪个类型都写“Choose a template”，五个分类页共用一个标题，对 SEO 和客户定位都没用 */}
@@ -101,12 +107,16 @@ export default async function DesignPage({ params, searchParams }: Props) {
                     <Link href={`/design/${productType}?blank=1`} className="ml-1 font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2 underline-offset-4">design from scratch</Link>.
                 </p>
                 <FreeDesignCallout className="mt-6" />
+                {/* 与 /design 同一份筛选条：当前分类胶囊高亮，换分类不用先后退 */}
+                <TemplateFilterBar facets={facets} current={productType} q={sp.q} basePath={`/design/${productType}`} />
                 {list.capped && (
                     <p className="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-                        That page is too deep in the library — use the search box on the Design Studio home page to narrow it down.
+                        That page is too deep in the library — narrow your search or pick another category above.
                     </p>
                 )}
-                {list.rows.length > 0 && (
+                {list.rows.length === 0 ? (
+                    <p className="mt-12 text-neutral-500">No {productType} templates match “{sp.q}”.</p>
+                ) : (
                     <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                         {list.rows.map((tpl) => (
                             <TemplateCard key={tpl.slug} tpl={tpl} />
@@ -119,7 +129,7 @@ export default async function DesignPage({ params, searchParams }: Props) {
                         pages={list.pages}
                         total={list.total}
                         unit="templates"
-                        href={(p) => `/design/${productType}?page=${p}`}
+                        href={(p) => `/design/${productType}${withQuery(sp, { page: String(p) })}`}
                     />
                 </div>
             </main>

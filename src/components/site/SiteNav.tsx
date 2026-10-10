@@ -92,7 +92,7 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
 
     const links = [
         { href: '/quote', label: t('quote') },
-        { href: '/design/label', label: t('design') },
+        { href: '/design', label: t('design') },
         { href: '/about', label: t('about') },
     ];
 
