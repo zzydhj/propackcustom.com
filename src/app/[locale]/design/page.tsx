@@ -46,8 +46,9 @@ export default async function DesignHomePage({
     for (const [k, v] of Object.entries(raw)) sp[k] = Array.isArray(v) ? v[0] : v;
 
     const page = Math.max(1, Number(sp.page) || 1);
+    // 这一页只管“全部 + 搜索”；分类已搬到路径上（/design/label），?type= 由 proxy 301 过去，不留两个地址
     const [list, facets] = await Promise.all([
-        listTemplates<TemplateListItem>({ q: sp.q, productType: sp.type, activeOnly: true, page, take: TEMPLATE_PAGE_SIZE }, TEMPLATE_LIST_SELECT),
+        listTemplates<TemplateListItem>({ q: sp.q, activeOnly: true, page, take: TEMPLATE_PAGE_SIZE }, TEMPLATE_LIST_SELECT),
         templateTypeFacets({ q: sp.q, activeOnly: true }),
     ]);
     const href = (p: number) => `/design${qs(sp, { page: String(p) })}`;
@@ -66,18 +67,17 @@ export default async function DesignHomePage({
                 搜索框故意另起一行靠左侧：右侧有 z-40 的浮动工具栏，靠右会被它盖住导致点到“Quote”。 */}
             <div className="mt-6 border-y border-neutral-200 py-3">
                 <div className="flex flex-wrap items-center gap-2">
-                    <Link href={`/design${qs(sp, { type: undefined, q: undefined, page: undefined })}`} className={`${chip} ${!sp.type && !sp.q ? chipOn : chipOff}`}>
-                        {/* “All” 的计数不能选 list.total：那已经按当前 type 收窄了，会变成“选了 label 时 All 也显示 2” */}
+                    <Link href={`/design${qs(sp, { q: undefined, page: undefined })}`} className={`${chip} ${!sp.q ? chipOn : chipOff}`}>
+                        {/* “All” 的计数用 facet 之和（list.total 已被搜索词收窄，不代全部类型） */}
                         All · {facets.reduce((n, f) => n + f.count, 0).toLocaleString('en-US')}
                     </Link>
                     {facets.map((f) => (
-                        <Link key={f.productType} href={`/design${qs(sp, { type: f.productType, page: undefined })}`} className={`${chip} capitalize ${sp.type === f.productType ? chipOn : chipOff}`}>
+                        <Link key={f.productType} href={`/design/${f.productType}${sp.q ? `?q=${encodeURIComponent(sp.q)}` : ''}`} className={`${chip} capitalize ${chipOff}`}>
                             {f.productType} · {f.count.toLocaleString('en-US')}
                         </Link>
                     ))}
                 </div>
                 <form method="GET" action="/design" className="mt-3 flex max-w-sm items-center gap-2">
-                    {sp.type && <input type="hidden" name="type" value={sp.type} />}
                     <input name="q" defaultValue={sp.q} placeholder="Search templates…" className="h-8 w-full rounded-md border border-neutral-300 px-3 text-xs outline-none focus:border-neutral-900" />
                     <button type="submit" className={`${chip} ${chipOff} shrink-0`}>Search</button>
                 </form>

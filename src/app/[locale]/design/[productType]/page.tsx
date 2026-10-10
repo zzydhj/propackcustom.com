@@ -15,12 +15,17 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-    title: 'Design Studio — Create Your Packaging Online',
-    description: 'Design custom packaging and labels online — pick a template, edit text and artwork in your browser, then order directly.',
-};
+// 每个分类页一个标题/描述：之前五个分类页共用一个静态 metadata，等于五个 URL 一个标题
+export async function generateMetadata({ params }: { params: Promise<{ productType: string }> }): Promise<Metadata> {
+    const { productType } = await params;
+    const label = productType.charAt(0).toUpperCase() + productType.slice(1);
+    return {
+        title: `${label} Templates — Design Online & Order`,
+        description: `Pick a sized ${productType} template, edit text and artwork right in your browser, then send it straight to print.`,
+    };
+}
 
-type Props = { params: Promise<{ locale: string; productType: string }>; searchParams: Promise<{ template?: string; design?: string; page?: string }> };
+type Props = { params: Promise<{ locale: string; productType: string }>; searchParams: Promise<{ template?: string; design?: string; blank?: string; page?: string }> };
 
 export default async function DesignPage({ params, searchParams }: Props) {
     const { locale, productType } = await params;
@@ -69,7 +74,13 @@ export default async function DesignPage({ params, searchParams }: Props) {
         );
     }
 
-    // 3) 有该类型模板：展示模板库供选择（服务端分页，非全屏）——一个类型下可能挂几千个模板
+    // 3) 空白画布：?blank=1 才是“从零开始”。
+    //    以前“design from scratch”链到 /design/[type] 本身，有模板的类型会回到同一个列表，永远走不到空白编辑器。
+    if (sp.blank) {
+        return <DesignStudio productType={productType} />;
+    }
+
+    // 4) 有该类型模板：展示模板库供选择（服务端分页，非全屏）——一个类型下可能挂几千个模板
     const page = Math.max(1, Number(sp.page) || 1);
     const list = await listTemplates<TemplateListItem>(
         { productType, activeOnly: true, page, take: TEMPLATE_PAGE_SIZE },
@@ -78,11 +89,12 @@ export default async function DesignPage({ params, searchParams }: Props) {
     if (list.total > 0) {
         return (
             <main className="mx-auto max-w-[1440px] px-5 py-10 2xl:px-12">
-                <h1 className="text-2xl font-black text-neutral-900 sm:text-3xl">Choose a template</h1>
+                {/* h1 带类型名：以前不管哪个类型都写“Choose a template”，五个分类页共用一个标题，对 SEO 和客户定位都没用 */}
+                <h1 className="text-2xl font-black capitalize text-neutral-900 sm:text-3xl">{productType} templates</h1>
                 <p className="mt-2 text-neutral-600">
                     <span className="font-semibold text-neutral-900">{list.total.toLocaleString('en-US')}</span> sized templates for{' '}
                     <span className="font-semibold text-neutral-900 capitalize">{productType}</span>, or
-                    <Link href={`/design/${productType}`} className="ml-1 font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2 underline-offset-4">design from scratch</Link>.
+                    <Link href={`/design/${productType}?blank=1`} className="ml-1 font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2 underline-offset-4">design from scratch</Link>.
                 </p>
                 <FreeDesignCallout className="mt-6" />
                 {list.capped && (
@@ -110,6 +122,6 @@ export default async function DesignPage({ params, searchParams }: Props) {
         );
     }
 
-    // 4) 该类型暂无模板：全屏空白画布
+    // 5) 该类型暂无模板：全屏空白画布
     return <DesignStudio productType={productType} />;
 }
