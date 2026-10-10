@@ -44,10 +44,12 @@ function CategoryPanel({ g, viewAll }: { g: NavGroup; viewAll: string }) {
                     <div className="grid gap-x-3 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(92px,1fr))]">
                         {sg.items.map((it) => (
                             <Link key={it.label} href={it.href as never} className="group flex flex-col items-center">
-                                <div className="aspect-square w-full overflow-hidden rounded-lg bg-gradient-to-br from-neutral-100 to-neutral-200 ring-1 ring-neutral-200 transition group-hover:ring-[#ffec5a]">
+                                {/* 放大效果挂在方块本体上：以前只挂在 <img> 上，而 NAV_CATALOG 没有 image 字段，
+                                   所以那个分支从不渲染 —— 放大实际上从来没生效过 */}
+                                <div className="aspect-square w-full overflow-hidden rounded-lg bg-gradient-to-br from-neutral-100 to-neutral-200 ring-1 ring-neutral-200 transition duration-200 group-hover:scale-[1.04] group-hover:ring-[#ffec5a]">
                                     {it.image ? (
                                         // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={it.image} alt={it.label} className="h-full w-full object-cover transition group-hover:scale-105" />
+                                        <img src={it.image} alt={it.label} className="h-full w-full object-cover" />
                                     ) : (
                                         <div className="grid h-full w-full place-items-center font-display text-lg font-black text-neutral-300">
                                             {it.label.trim().slice(0, 1)}
@@ -131,7 +133,10 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
                                             // 间隙放进 li 自己的 padding（而不是 space-y-1 的外边距）：
                                             // 外边距会在两项之间留出不属于任何 li 的空域，鼠标经过时没人被 hover
                                             // → 静止态面板闪一下，看起来就是“内容跳”（用户报的正是这个）
-                                            <li key={g.id} className="mega-cat group/cat relative py-0.5">
+                                            // 这里**不能**给 li 加 relative：面板的 left/right 是按整块网格算的，
+                                            // 一旦 li 自己成为定位基准（只有 220px 宽），left:240px + right:20px
+                                            // 会算出负宽度→面板被压成 0 宽，高亮在但内容完全看不见（实测踩过）。
+                                            <li key={g.id} className="mega-cat group/cat py-0.5">
                                                 <span className="flex w-full cursor-default items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium text-neutral-600 transition group-hover/cat:bg-[#ffec5a] group-hover/cat:text-neutral-900">
                                                     {g.label}
                                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-neutral-300 group-hover/cat:text-neutral-900">
