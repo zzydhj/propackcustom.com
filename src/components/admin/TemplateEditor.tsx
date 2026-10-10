@@ -26,7 +26,7 @@ export function TemplateEditor({ tpl }: { tpl?: Tpl }) {
                     <input name="slug" defaultValue={tpl?.slug} placeholder="auto-from-name" className={input} /></label>
                 <label className="grid gap-1 text-sm"><span className="text-neutral-600">名称</span>
                     <input name="name" defaultValue={tpl?.name} className={input} required /></label>
-                <label className="grid gap-1 text-sm"><span className="text-neutral-600">产品类型（label/card/tag/box…）</span>
+                <label className="grid gap-1 text-sm"><span className="text-neutral-600">产品类型（card/label/sticker/tag/box…）</span>
                     <input name="productType" defaultValue={tpl?.productType} className={input} required /></label>
                 <label className="grid gap-1 text-sm"><span className="text-neutral-600">分类（可选）</span>
                     <input name="category" defaultValue={tpl?.category ?? ''} className={input} /></label>

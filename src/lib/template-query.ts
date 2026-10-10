@@ -29,7 +29,11 @@ export type TemplatePage<T> = {
     capped: boolean;
 };
 
-/** 列表页只取展示字段：sceneTemplate / slots 可以很大（导入后的模板 JSON），不拉 */
+/**
+ * 列表页只取展示字段：不拉 slots（导入器写的，列表用不到）。
+ * sceneTemplate 必须拉：卡片的设计预览靠它在服务端编译成 SVG（无 R2 时的唯一预览来源）。
+ * 单页只 24–25 行，且 sceneToSvg 对过大的场景（内嵌 dataURL 图）会主动放弃并回退刀版框。
+ */
 export const TEMPLATE_LIST_SELECT = {
     id: true,
     slug: true,
@@ -44,6 +48,7 @@ export const TEMPLATE_LIST_SELECT = {
     sort: true,
     previewImage: true,
     dielineSvg: true,
+    sceneTemplate: true,
     tags: true,
     updatedAt: true,
 } as const;

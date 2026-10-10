@@ -27,7 +27,7 @@ function scene(label, safeAreaMm) {
 
 const templates = [
     {
-        slug: 'round-sticker-80', name: 'Round Sticker · 80mm', productType: 'label', category: 'Stickers',
+        slug: 'round-sticker-80', name: 'Round Sticker · 80mm', productType: 'sticker', category: 'Stickers',
         widthMm: 80, heightMm: 80, bleedMm: 3, safeAreaMm: 4,
         dielineSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><circle cx="40" cy="40" r="37" fill="none" stroke="#e11d48" stroke-width="0.6" stroke-dasharray="2 1.5"/></svg>',
         sceneTemplate: scene('Your logo', 4), sort: 1,
