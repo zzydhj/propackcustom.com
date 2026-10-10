@@ -7,7 +7,10 @@ import { outOfCmykGamut } from '@/lib/color-gamut';
 import { coversRegion, dieRegions as buildDieRegions, parseDieShape, regionContains, regionOverlaps, type DieObject } from '@/lib/dieline';
 
 // 预览基准：1mm = 8px（≈200dpi 预览，桌面画布显示更大；导出 PNG 用 multiplier 达 300dpi+，矢量 PDF 走后端链）
-export const PX_PER_MM = 8;
+// 单位常量收在 src/lib/scene-units.ts（服务端/脚本也要用，不能从本文件拉走整个 Fabric）；
+// 这里 re-export 保持既有 import 路径不变
+export { PX_PER_MM } from '@/lib/scene-units';
+import { PX_PER_MM } from '@/lib/scene-units';
 
 // 文档级缩放：用 canvas.setZoom + 同步改 CSS 尺寸，场景坐标与 sceneJson 完全不变，
 // 大模板（200×150mm = 1600×1200px）缩小后能整张看下，放大后由外层 overflow 容器出滚动条当平移。

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { prisma } from './prisma';
+import { prisma } from './prisma.ts';
 import type { Prisma } from '@prisma/client';
-import { slugify, slugWithSuffix } from './template-slug';
+import { slugify, slugWithSuffix } from './template-slug.ts';
 
 // 模板库查询层（服务端专用）。10 万级规模的三条硬约束都收在这里：
 // 1) 永远分页，绝不 findMany 全表；2) 查询走 (active, productType, sort) 复合索引；
