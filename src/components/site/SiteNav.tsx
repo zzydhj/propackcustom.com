@@ -9,30 +9,70 @@ import type { NavGroup } from '@/lib/megaMenu';
 
 // 顶部导航 + 产品 Mega Menu（左侧主分类竖列 + 右侧子分类分组的小方块）
 //
-// Mega menu 采用「悬停区模型」：Products 按钮与它的面板同属一个 hover 触发区（self-stretch 撑满
-// header 高度，消除按钮与面板之间的空隙）。进入触发区开启、离开触发区关闭。面板是该 div 的 DOM
-// 后代（绝对定位相对 sticky header），所以鼠标从按钮移到面板不会误关；而移到 Home / Logo / Quote
-// 等任何其它头部元素都会离开触发区 → 自动关闭。彻底修复了旧实现「向左滑到 Home 不关、向右滑到
-// Quote 才关」的方向不对称 bug（旧法靠逐个链接绑 close，只要漏绑一个就复现）。
+// ── 交互全部走 CSS，不依赖 React 状态（也不依赖水合） ──
+// 1) 面板弹出：Products 按钮与面板同属一个 group/mega 悬停区（self-stretch 撑满 header 高度，
+//    消除按钮与面板间的空隙）。面板是该 div 的 DOM 后代，所以鼠标从按钮移到面板不会误关；
+//    移到 Home / Logo / Quote 等任何其它头部元素都会离开触发区 → 自动关闭。
+//    以前靠 onMouseEnter + setState：脚本没跑起来（或还没水合）就完全弹不出来，实测踩过。
+// 2) 左列切右列：右列每个分类各一块面板，靠 globals.css 里的 :has() + :nth-child(n) 与左列一一对应，
+//    悬停哪一项就显示哪一块 —— 同样是纯 CSS，零 JS。
+//    以前是「右列只渲染 active 那一块 + setState 切 index」，一没 JS 就卡在第一个分类（实测踩过）。
+// 3) 没悬停任何分类时的静止态 = 第一个分类；一旦左列有项被 hover，CSS 把静止态让位给对应面板。
+//    左列项与右列面板靠 :nth-child(n) 一一对应（见 globals.css），不写死分类名、也不依赖像素偏移。
 //
-// 悬停显示交给 **CSS（group-hover）**，不靠 React state：面板常驻 DOM 只切 visibility/opacity，
-// 于是「JS 还没水合」「水合失败」「水合延迟」都不影响悬停（以前靠 setState，脚本没跑起来就完全点不动）。
-// state 只保留给「点击展开」（触屏/键盘）与移动端抽屉用。
+// 左列不给内部滚动条（11 个分类全部展开）；面板整体 max-h 受视口约束，装不下时才由面板自身滚动。
 
 // 面板显隐：base 隐藏 → 悬停/聚焦显示；open（点击态）直接显示。三组互斥类，不叠加同优先级冲突
-// max-h + overflow-y-auto 放在整块面板上：左列分类全部展开（不给它内部滚动条），
-// 只有当面板比视口还高时才由面板整体滚动（auto = 装得下就一个滚动条也不出）
 const PANEL = 'absolute inset-x-0 top-full max-h-[calc(100vh-72px)] overflow-y-auto overscroll-contain border-b border-neutral-200 bg-white shadow-[0_20px_40px_-24px_rgba(0,0,0,0.25)] transition-opacity duration-150 hidden lg:block';
 const PANEL_OFF = 'invisible opacity-0';
 const PANEL_ON = 'visible opacity-100';
 const PANEL_HOVER = 'lg:group-hover/mega:visible lg:group-hover/mega:opacity-100 lg:group-focus-within/mega:visible lg:group-focus-within/mega:opacity-100';
 
+/** 一个分类的面板内容：子分类网格 + 查看全部 */
+function CategoryPanel({ g, viewAll }: { g: NavGroup; viewAll: string }) {
+    return (
+        <div className="space-y-6">
+            {g.subgroups.map((sg) => (
+                <div key={sg.label}>
+                    <h4 className="mb-3 flex items-center gap-2 text-sm font-bold text-neutral-900">
+                        <span className="h-4 w-1 rounded bg-[#ffec5a]" />
+                        {sg.label}
+                    </h4>
+                    <div className="grid gap-x-3 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(92px,1fr))]">
+                        {sg.items.map((it) => (
+                            <Link key={it.label} href={it.href as never} className="group flex flex-col items-center">
+                                <div className="aspect-square w-full overflow-hidden rounded-lg bg-gradient-to-br from-neutral-100 to-neutral-200 ring-1 ring-neutral-200 transition group-hover:ring-[#ffec5a]">
+                                    {it.image ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={it.image} alt={it.label} className="h-full w-full object-cover transition group-hover:scale-105" />
+                                    ) : (
+                                        <div className="grid h-full w-full place-items-center font-display text-lg font-black text-neutral-300">
+                                            {it.label.trim().slice(0, 1)}
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="mt-1.5 w-full text-center text-[11px] leading-tight text-neutral-600 group-hover:text-neutral-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">
+                                    {it.label}
+                                </p>
+                            </Link>
+                        ))}
+                    </div>
+                </div>
+            ))}
+            <div className="border-t border-neutral-100 pt-4">
+                <Link href="/products" className="text-sm font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2 underline-offset-4">
+                    {viewAll} →
+                </Link>
+            </div>
+        </div>
+    );
+}
+
 export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: boolean }) {
     const t = useTranslations('Nav');
     const brand = useTranslations('Brand');
-    // 点击展开态（触屏/键盘用；悬停不经过它）
+    // 点击展开态：只服务触屏/键盘（悬停不经过它）
     const [open, setOpen] = useState(false);
-    const [active, setActive] = useState(0);
     // 移动端菜单：lg 以下整条桌面导航不渲染，必须有个收纳入口，
     // 否则手机上只剩 Logo + 账户按钮（右侧那组在 390px 还会撑出横向滚动条）
     const [menu, setMenu] = useState(false);
@@ -45,7 +85,6 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
         { href: '/design/label', label: t('design') },
         { href: '/about', label: t('about') },
     ];
-    const current = groups[active];
 
     return (
         <header className="sticky top-0 z-50 w-full border-b border-neutral-100 bg-white">
@@ -62,7 +101,7 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
                         {t('home')}
                     </Link>
 
-                    {/* Products 悬停触发区：按钮 + mega 面板同属一个 group/mega（显隐走 CSS） */}
+                    {/* Products 悬停触发区：按钮 + mega 面板同属一个 group/mega */}
                     <div className="group/mega flex items-center self-stretch">
                         <button
                             type="button"
@@ -77,71 +116,35 @@ export function SiteNav({ groups, signedIn }: { groups: NavGroup[]; signedIn: bo
                             </svg>
                         </button>
 
-                        {/* Mega Menu panel（触发区后代，绝对定位相对 sticky header）。
-                            常驻 DOM：靠 visibility 切换，所以没水合也能悬停弹出 */}
+                        {/* Mega Menu 面板（常驻 DOM，靠 visibility 切换 → 没水合也能悬停弹出） */}
                         <div className={`${PANEL} ${open ? PANEL_ON : `${PANEL_OFF} ${PANEL_HOVER}`}`}>
                             <div className="h-1 w-full bg-[#ffec5a]" />
-                            <div className="container-site grid grid-cols-[220px_minmax(0,1fr)] gap-8 py-8">
-                                {/* Left: main category column */}
+                            <div className="mega-grid container-site relative grid grid-cols-[220px_minmax(0,1fr)] gap-8 py-8">
+                                {/* Left: 分类列表。全部展开，不给内部滚动条 */}
                                 <div>
                                     <p className="mb-3 px-3 text-xs font-bold uppercase tracking-wide text-neutral-400">{t('products')}</p>
                                     <ul className="space-y-1">
-                                        {groups.map((g, i) => (
-                                            <li key={g.id}>
-                                                <button
-                                                    type="button"
-                                                    onMouseEnter={() => setActive(i)}
-                                                    onClick={() => setActive(i)}
-                                                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${i === active ? 'bg-[#ffec5a] text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
-                                                        }`}
-                                                >
+                                        {groups.map((g) => (
+                                            <li key={g.id} className="mega-cat group/cat relative">
+                                                <span className="flex w-full cursor-default items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium text-neutral-600 transition group-hover/cat:bg-[#ffec5a] group-hover/cat:text-neutral-900">
                                                     {g.label}
-                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={i === active ? 'text-neutral-900' : 'text-neutral-300'}>
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-neutral-300 group-hover/cat:text-neutral-900">
                                                         <path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                                     </svg>
-                                                </button>
+                                                </span>
                                             </li>
                                         ))}
                                     </ul>
                                 </div>
 
-                                {/* Right: subgroups of the active category */}
-                                <div className="space-y-6">
-                                    {current?.subgroups.map((sg) => (
-                                        <div key={sg.label}>
-                                            <h4 className="mb-3 flex items-center gap-2 text-sm font-bold text-neutral-900">
-                                                <span className="h-4 w-1 rounded bg-[#ffec5a]" />
-                                                {sg.label}
-                                            </h4>
-                                            <div className="grid gap-x-3 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(92px,1fr))]">
-                                                {sg.items.map((it) => (
-                                                    <Link key={it.label} href={it.href as never} className="group flex flex-col items-center">
-                                                        <div className="aspect-square w-full overflow-hidden rounded-lg bg-gradient-to-br from-neutral-100 to-neutral-200 ring-1 ring-neutral-200 transition group-hover:ring-[#ffec5a]">
-                                                            {it.image ? (
-                                                                // eslint-disable-next-line @next/next/no-img-element
-                                                                <img src={it.image} alt={it.label} className="h-full w-full object-cover transition group-hover:scale-105" />
-                                                            ) : (
-                                                                <div className="grid h-full w-full place-items-center font-display text-lg font-black text-neutral-300">
-                                                                    {it.label.trim().slice(0, 1)}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        <p className="mt-1.5 w-full text-center text-[11px] leading-tight text-neutral-600 group-hover:text-neutral-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">
-                                                            {it.label}
-                                                        </p>
-                                                    </Link>
-                                                ))}
-                                            </div>
+                                {/* Right: 每个分类一块面板，与左列 :nth-child 一一对应。
+                                    静止态只显示第一块，悬停哪一项就换哪一块（全 CSS，零 JS） */}
+                                <div>
+                                    {groups.map((g) => (
+                                        <div key={g.id} className="mega-panel">
+                                            <CategoryPanel g={g} viewAll={t('viewAll')} />
                                         </div>
                                     ))}
-
-                                    {current && (
-                                        <div className="border-t border-neutral-100 pt-4">
-                                            <Link href="/products" className="text-sm font-semibold text-neutral-900 underline decoration-[#ffec5a] decoration-2 underline-offset-4">
-                                                {t('viewAll')} →
-                                            </Link>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>

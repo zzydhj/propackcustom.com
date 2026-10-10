@@ -164,9 +164,11 @@ if (!trim) {
 }
 
 // ── ② 内容层：pdfjs-dist ─────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pdf: any = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
-const page: any = await pdf.getPage(1);
+/** pdf.js 类型暴光不全的图层条目，自己定形状（不用 any） */
+type OcGroup = { id?: number; name?: string; visible?: boolean };
+// 不写 any 注解：pdfjs-dist v6 自带类型，让它自己推
+const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
+const page = await pdf.getPage(1);
 const OPS: Record<string, number> = pdfjs.OPS;
 
 /** OCG id → 图层名（pdf.js 的 markedContent id 用它自己的编号，必须按 name 表映射） */
@@ -174,8 +176,9 @@ const layerNameById = new Map<number, string>();
 let ocGroups: { id: number; name: string; visible: boolean }[] = [];
 try {
     const cfg = await pdf.getOptionalContentConfig({ intent: 'display' });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const list: any[] = typeof cfg?.getGroups === 'function' ? cfg.getGroups() : (cfg?.groups ?? []);
+    // 类型定义没暴光 groups（实测 getGroups() 与 .groups 两种形态都可能存在），窄转后兼容
+    const loose = cfg as unknown as { getGroups?: () => OcGroup[]; groups?: OcGroup[] };
+    const list: OcGroup[] = typeof loose?.getGroups === 'function' ? loose.getGroups() : (loose?.groups ?? []);
     ocGroups = list.map((g) => ({ id: Number(g?.id), name: String(g?.name ?? '(unnamed)'), visible: g?.visible !== false }));
     for (const g of ocGroups) layerNameById.set(g.id, g.name);
 } catch (e) {
@@ -184,8 +187,7 @@ try {
 
 type TextRun = { text: string; layer: string; xMm: number; topMm: number; sizeMm: number; font: string };
 const runs: TextRun[] = [];
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const tc: any = await page.getTextContent({ includeMarkedContent: true });
+const tc = await page.getTextContent({ includeMarkedContent: true });
 
 const walkText = (items: unknown[], layer: string) => {
     for (const raw of items ?? []) {
@@ -219,7 +221,7 @@ const opHistogram: Record<string, number> = {};
 /** 取证用：把 constructPath 的参数结构原样记下来（历次猜错的地方） */
 const pathArgShape: string[] = [];
 try {
-    const gstate: any = await page.getOperatorList();
+    const gstate = await page.getOperatorList();
     const stack: string[] = [];
     const opName: Record<number, string> = {};
     for (const [k, v] of Object.entries(OPS)) opName[Number(v)] = k;

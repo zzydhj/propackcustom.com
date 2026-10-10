@@ -64,3 +64,34 @@ body {
     padding-inline: 2rem;
   }
 }
+
+/* Mega Menu：左列分类与右列面板靠 :nth-child(n) 一一对应，整块交互零 JS、零水合依赖。
+   静止态只显第一块；左列任一分类被悬停 → 收起全部，再按同序展开对应那一块。
+   （Tailwind 的 group-hover 做不到“跨列联动第 n 块”，所以这三条规则放在这里，而不是堆到 className 上）
+   :has() 主流浏览器已全部支持；不支持时退化为“只看到第一块”，不会坏掉。 */
+.mega-panel {
+  display: none;
+}
+
+.mega-panel:first-child {
+  display: block;
+}
+
+.mega-grid:has(.mega-cat:hover) .mega-panel {
+  display: none;
+}
+
+.mega-grid:has(.mega-cat:nth-child(1):hover) .mega-panel:nth-child(1),
+.mega-grid:has(.mega-cat:nth-child(2):hover) .mega-panel:nth-child(2),
+.mega-grid:has(.mega-cat:nth-child(3):hover) .mega-panel:nth-child(3),
+.mega-grid:has(.mega-cat:nth-child(4):hover) .mega-panel:nth-child(4),
+.mega-grid:has(.mega-cat:nth-child(5):hover) .mega-panel:nth-child(5),
+.mega-grid:has(.mega-cat:nth-child(6):hover) .mega-panel:nth-child(6),
+.mega-grid:has(.mega-cat:nth-child(7):hover) .mega-panel:nth-child(7),
+.mega-grid:has(.mega-cat:nth-child(8):hover) .mega-panel:nth-child(8),
+.mega-grid:has(.mega-cat:nth-child(9):hover) .mega-panel:nth-child(9),
+.mega-grid:has(.mega-cat:nth-child(10):hover) .mega-panel:nth-child(10),
+.mega-grid:has(.mega-cat:nth-child(11):hover) .mega-panel:nth-child(11),
+.mega-grid:has(.mega-cat:nth-child(12):hover) .mega-panel:nth-child(12) {
+  display: block;
+}
