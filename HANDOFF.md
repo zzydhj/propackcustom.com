@@ -106,6 +106,9 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 23. **圆形对象不能用外接矩形做包含判定**：圆的外接框四角永远比圆大，一个刚好铺满出血的背景圆会被判“超出出血”→ 圆模板永久报红。`dieline.ts` 的 `DieObject` 允许对象附带真实圆，两个判定口径（引擎/脚本）共用。
 24. **R2 已接通（2026-10-10 实测）**：`r2Enabled()=true`，PUT 200 → HEAD → 预签名 GET 内容一致 → **公共域名 `https://file.propackcustom.com/...` 直接 200 可访问** → DELETE 204 后 HEAD NotFound。坑：**`R2_BUCKET` 原本写的是 `propack-artworks`，而令牌只授权 `propackcustom` → 写入 403 AccessDenied**；令牌是桶作用域的，ListBuckets 也会 AccessDenied（这不代表凭证错）。中文对象键安全（SDK 会 percent-encode）。
 25. **桶内目录必须按 `objectKey()` 的规范走**（用户明确要求不得混乱）：`uploads/{artwork,proofs}/<yyyy>/<mm>/<dd>-<rand>-<原名>`（上传类按月分片）、`exports/designs/<designId>/`、`production/orders/<orderNo>/`（产物类按实体归组）、`templates/source/<yyyy>/<mm>/<sha12>-<原名>`、`templates/preview/<slug>.<ext>`（稳定键可覆盖）、`tmp/`（建议配 7 天生命周期规则）。新增用途就改 `LAYOUT` 一处。
+26. **R2 公共域名 `file.propackcustom.com` 目前不带 CORS 头**（实测：GET 无 `access-control-allow-origin`，预检 OPTIONS 直接 403）→ **不能把 R2 直链丢进 Fabric 画布**：带 `crossOrigin` 会加载失败，不带则画布被污染，`toDataURL()`/导出直接 SecurityError。所以“大图不进 sceneJson”这个优化必须走**同源代理**（或者你在 Cloudflare 给桶加一条 CORS 规则，加完就可以直链 + 吃 CDN）。
+27. **用户报“UI 点了/悬停没反应”时，先看 dev server 终端有没有编译错误**。实测踩过：我改 SiteNav 改到一半留了个多余 `)}` → Turbopack 编译失败 → `/products` 返 500 → 浏览器拿到坏 bundle → **整页失去水合**，表现就是“所有 JS 交互都死了但页面看得到”。修好后**那个标签页仍挂着死 bundle，必须硬刷新**。判别技巧：纯 CSS 的 hover 效果还在、靠 state 的效果不动 → 就是没水合。
+28. **Mega Menu 现在全部交互零 JS**（悬停弹面板 + 左列切右列）。代价是 11 块面板都得在 DOM 里：首页 HTML raw 217KB / **gzip 25.9KB**（重复结构压得动）。要回到极小 HTML 就得重新用 React 状态，代价是“没 JS 就不切”。规则在 `globals.css` 的 `.mega-grid:has(...)` 那一段，分类超过 12 个要补 `:nth-child` 行。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -186,13 +189,13 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 - 设计器：`src/components/design/{useFabricCanvas,DesignCanvas,DesignStudio,ObjectPropertiesPanel,PreflightPanel,GuideOverlay}.tsx/ts` · `src/features/design/actions.ts` · `src/app/[locale]/design/{page,[productType]/page}.tsx` · `src/app/[locale]/account/designs/page.tsx`
 - 快速定制：`src/app/[locale]/customize/[templateSlug]/page.tsx` · `src/components/design/{GuidedStudio,GuidedWorkspace,useDesignSave}.tsx/ts` · `src/components/product/DesignPendingHint.tsx`
 - 桥接：`src/lib/design-bridge.ts`（localStorage `pp_order_design` 唯一入出口：`useDesignBridge/saveDesignBridge/clearDesignBridge`）· `src/components/ui/AttachedDesignNote.tsx`（表单上展示挂的是哪份 + don’t attach）· `src/components/product/DesignPendingHint.tsx`（/products 列表页黄条）· `src/components/quote/{ProductConfigurator,QuoteForm}.tsx` · `src/features/{order,quote}/actions.ts`（designId 落库）
-- 导航：`src/components/site/SiteNav.tsx`（悬停区模型+mega menu）· `src/lib/megaMenu.ts`（NavGroup 数据）
+- 导航：`src/components/site/SiteNav.tsx`（悬停区模型+mega menu，**全部交互零 JS**）· `src/lib/megaMenu.ts`（NavGroup 数据）· 左列↔右列联动规则在 `src/app/globals.css` 末尾
 - 后台：`src/components/admin/{TemplateEditor,PostEditor,VideoEditor,OrderReviewPanel}.tsx` · `src/features/admin/actions.ts` · `src/app/[locale]/admin/{templates,blog,videos,orders}/page.tsx`
 - 计价引擎：`src/lib/config-engine.ts` · 订单领域：`src/lib/orders.ts`
 - schema：`prisma/schema.prisma`（Order.designId L277、Quote.designId、DesignTemplate/UserDesign L~360-400、Post/Video）
 - 首页：`src/app/[locale]/page.tsx`（各段都是本文件内的展示型函数；新横幅 `DesignStudioBand` 在 `Categories` 后）· 文案 `messages/en.json`
 - 色彩：`src/lib/color-gamut.ts`（sRGB→Lab + CMYK 色域近似上限，**只预警不换算**）
-- PSD 导入 spike：`src/lib/psd-template.ts`（纯映射契约）· `scripts/psd-spike.mjs`（自检 + 跑真实 PSD）· 详见 §6A
+- PSD 导入 spike：`src/lib/psd-template.ts`（纯映射契约）· `scripts/psd-spike.mjs`（自检 + 跑真实 PSD）· **`scripts/ai-pdf-spike.mts`**（跑真实 AI/PDF：`node --experimental-strip-types scripts/ai-pdf-spike.mjs "Test file/xxx.ai"`，报告落 `scripts/out/`）· 详见 §6A
 - 维护脚本：`scripts/cleanup-test-data.mjs`（测试数据清理，默认 dry-run）· `scripts/template-scale-check.mjs`（模板库规模压测：灌 N 条临时模板→量查询+看执行计划→自清，`--rows=20000`）· **`scripts/generate-templates.mjs`**（生成内容模板：`--count=200` 重建、`--dry-run` 只算+自检、`--clean` 只删这批）· **`scripts/check-template-colors.mts`**（拿真实色域规则体检全库 fill 颜）· `prisma/seed-templates.mjs`（模板 upsert 幂等）
 
 ## 8. 提交链（origin/main 已同步）
