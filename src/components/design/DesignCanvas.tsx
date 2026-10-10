@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useRouter } from '@/navigation';
 import { useFabricCanvas, PX_PER_MM, ZOOM_MAX, ZOOM_MIN, type PreflightIssue } from './useFabricCanvas';
 import ObjectPropertiesPanel from './ObjectPropertiesPanel';
@@ -8,6 +8,8 @@ import LayerList from './LayerList';
 import PreflightPanel from './PreflightPanel';
 import GuideOverlay from './GuideOverlay';
 import { FreeDesignCallout } from './FreeDesignCallout';
+import { parseDieShape } from '@/lib/dieline';
+import { appendDielinePage, svgWithDielineLayer } from '@/lib/production-export';
 import { useDesignSave } from './useDesignSave';
 import { saveDesignBridge } from '@/lib/design-bridge';
 
@@ -26,10 +28,14 @@ type Props = {
     dielineSvg?: string;
     bleedMm?: number;
     safeAreaMm?: number;
+    /** 满版模板（背景必须盖到裁切线）：交给预检报“会露白底” */
+    fullBleed?: boolean;
+    /** 模板 slug：写进生产文件的刀版层说明，印厂能对上哪个模切 */
+    templateSlug?: string;
 };
 
 // 全屏左右工作台：左栏 = 作品命名/保存 + 编辑工具；右栏 = 画布工作区（占满剩余视口）。
-export default function DesignCanvas({ productType, widthMm = 100, heightMm = 100, initialScene, designId, templateId, name, templateName, dielineSvg, bleedMm = 3, safeAreaMm = 3 }: Props) {
+export default function DesignCanvas({ productType, widthMm = 100, heightMm = 100, initialScene, designId, templateId, name, templateName, templateSlug, dielineSvg, bleedMm = 3, safeAreaMm = 3, fullBleed = false }: Props) {
     const {
         canvasElRef, canvasRef, ready,
         addText, addImage, removeActive, undo, redo, canUndo, canRedo,
@@ -38,12 +44,24 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
         issues, selectObject,
         layers, activeIndex, patchLayer, selectLayer, moveLayer, removeLayer,
         exportJSON, importJSON, exportPNG, exportSVG,
-    } = useFabricCanvas({ widthMm, heightMm, bleedMm, safeAreaMm });
+    } = useFabricCanvas({ widthMm, heightMm, bleedMm, safeAreaMm, dielineSvg, fullBleed });
 
     const fileRef = useRef<HTMLInputElement>(null);
     const jsonRef = useRef<HTMLInputElement>(null);
     const scrollerRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<HTMLDivElement>(null);
+
+    // 生产文件用的刀版元数据：形状从 dielineSvg 现场解析（与预检同源），不另存一份
+    const prodMeta = useMemo(() => ({
+        widthMm,
+        heightMm,
+        bleedMm,
+        safeAreaMm,
+        die: parseDieShape(dielineSvg ?? null, { widthMm, heightMm, pxPerMm: PX_PER_MM }),
+        templateName,
+        templateSlug,
+    }), [widthMm, heightMm, bleedMm, safeAreaMm, dielineSvg, templateName, templateSlug]);
+    const fileBase = `production-${(templateSlug ?? templateName ?? productType).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'design'}`;
     const router = useRouter();
     const [guides, setGuides] = useState(true);
     const { title, setTitle, savedId, saving, msg, setStatus, save } = useDesignSave({
@@ -165,11 +183,12 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
     const downloadSVG = () => {
         const svg = exportSVG();
         if (!svg) return;
-        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        // 印刷层包进 <g id="PRINT">，刀线单独一个非印刷 <g id="DIELINE">：印厂可整组开关，不会把裁切线印上去
+        const blob = new Blob([svgWithDielineLayer(svg, prodMeta, PX_PER_MM)], { type: 'image/svg+xml' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'design.svg';
+        a.download = `${fileBase}.svg`;
         a.click();
         URL.revokeObjectURL(url);
     };
@@ -186,8 +205,10 @@ export default function DesignCanvas({ productType, widthMm = 100, heightMm = 10
             const svgEl = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
             const doc = new jsPDF({ orientation: widthMm >= heightMm ? 'landscape' : 'portrait', unit: 'mm', format: [widthMm, heightMm] });
             await (doc as unknown as { svg(node: unknown, opts: { x: number; y: number; width: number; height: number }): Promise<unknown> }).svg(svgEl, { x: 0, y: 0, width: widthMm, height: heightMm });
-            (doc as unknown as { save(name: string): void }).save('design.pdf');
-            setStatus('PDF saved ✓ — outline fonts before printing');
+            // 第 2 页 = 1:1 刀版层（裁切/出血/安全），第 1 页保持干净的油墨层
+            appendDielinePage(doc as unknown as Parameters<typeof appendDielinePage>[0], prodMeta);
+            (doc as unknown as { save(name: string): void }).save(`${fileBase}.pdf`);
+            setStatus('Production PDF saved ✓ (page 2 = dieline) — outline fonts before printing');
         } catch (err) {
             console.error('[design] PDF export failed', err);
             setStatus('PDF render failed — use Export SVG instead');

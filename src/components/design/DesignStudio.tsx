@@ -24,6 +24,8 @@ export function DesignStudio({
     dielineSvg,
     bleedMm,
     safeAreaMm,
+    fullBleed,
+    templateSlug,
 }: {
     productType: string;
     widthMm?: number;
@@ -36,6 +38,9 @@ export function DesignStudio({
     dielineSvg?: string;
     bleedMm?: number;
     safeAreaMm?: number;
+    /** 满版模板标记（来自 DesignTemplate.fullBleed），透传给画布做预检 */
+    fullBleed?: boolean;
+    templateSlug?: string;
 }) {
     // 编辑器全屏：锁定背景滚动（否则底层 header/footer 仍在文档流，可滚出滞动条）
     useEffect(() => {
@@ -59,6 +64,8 @@ export function DesignStudio({
                 dielineSvg={dielineSvg}
                 bleedMm={bleedMm}
                 safeAreaMm={safeAreaMm}
+                fullBleed={fullBleed}
+                templateSlug={templateSlug}
             />
         </div>
     );

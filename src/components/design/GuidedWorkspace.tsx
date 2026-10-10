@@ -21,6 +21,8 @@ type Props = {
     bleedMm: number;
     safeAreaMm: number;
     dielineSvg?: string;
+    /** 满版模板：引导页虽然锁死版式，但客户换图/改长文字同样可能露白底，预检规则不能缺这一环 */
+    fullBleed?: boolean;
     initialScene?: string;
 };
 
@@ -29,7 +31,7 @@ const ctaMain = 'w-full rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibol
 const ctaGhost = 'w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 disabled:opacity-50';
 
 export default function GuidedWorkspace({
-    productType, templateId, templateSlug, templateName, widthMm, heightMm, bleedMm, safeAreaMm, dielineSvg, initialScene,
+    productType, templateId, templateSlug, templateName, widthMm, heightMm, bleedMm, safeAreaMm, dielineSvg, fullBleed, initialScene,
 }: Props) {
     const t = useTranslations('Customize');
     const router = useRouter();
@@ -37,7 +39,7 @@ export default function GuidedWorkspace({
         canvasElRef, ready, zoom, applyZoom, importJSON,
         fields, setFieldText, setFieldImage, removeObject, addImage,
         exportJSON,
-    } = useFabricCanvas({ widthMm, heightMm, bleedMm, safeAreaMm, lockEditing: true });
+    } = useFabricCanvas({ widthMm, heightMm, bleedMm, safeAreaMm, dielineSvg, fullBleed, lockEditing: true });
     const { savedId, saving, msg, save } = useDesignSave({
         productType, templateId, name: `${templateName} custom`, ready, exportJSON,
     });

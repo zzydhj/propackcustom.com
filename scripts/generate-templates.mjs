@@ -1,10 +1,13 @@
 // 模板生成器：按「版式骨架 × 配色 × 图案 × 字体搭配」组合出可编辑的设计模板，写入 DesignTemplate。
 // 目的是让模板库"有东西可逛"（定位①：模板是转化道具），全部矢量原语 + 自有文案，无版权风险。
 //
-// 用法：
-//   node scripts/generate-templates.mjs --dry-run --count=200   # 只算不写
-//   node scripts/generate-templates.mjs --count=200             # 重建这一批（先删后写，幂等）
-//   node scripts/generate-templates.mjs --clean                 # 只删本脚本生成的（sourceKey 标记）
+// 用法（必须带 --experimental-strip-types）：
+//   node --experimental-strip-types scripts/generate-templates.mjs --dry-run --count=200   # 只算不写
+//   node --experimental-strip-types scripts/generate-templates.mjs --count=200             # 重建这一批（先删后写，幂等）
+//   node --experimental-strip-types scripts/generate-templates.mjs --clean                 # 只删本脚本生成的
+//
+// 为什么要这个 flag：几何/形状判定直接 import 应用里的 src/lib/dieline.ts，只留一份规则；
+// 脚本自己另写一套的话，“自检全绿”并不等于设计器里的预检也全绿。
 //
 // 约定：场景坐标 = 成品(px)，PX=8px/mm（与设计器一致）；所有对象 originX/originY 一律 left/top，
 // 文字一律落在安全区内（否则引导页一打开就吃 Pre-flight 警告），装饰要么铺满成品线、要么整块在内。
@@ -12,6 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
+import { coversRegion, dieRegions, parseDieShape, regionContains, regionOverlaps } from '../src/lib/dieline.ts';
 
 const env = Object.fromEntries(
     readFileSync(new URL('../.env', import.meta.url), 'utf8')
@@ -247,20 +251,25 @@ function motif(kind, pal, w, h, safe, isCircle) {
 
 /** 版式骨架：返回 objects；坐标全部以 mm 表达，保证文字在安全区内 */
 function buildScene({ size, shape, pal, pair, motifKind, arch, slots }) {
-    const { w, h, safe } = size;
+    const { w, h, safe, bleed } = size;
     const isCircle = shape === 'circle';
+    const dieR = Math.min(w, h) / 2;
     const objects = [];
-    // 背景：铺满成品线（预检规则里"整块覆盖成品线"不算跨裁切）
-    objects.push(rect(0, 0, w, h, pal.bg));
+    // 背景：方形模板铺满成品矩形（整块盖住成品线的不算跨裁切）；
+    // 圆形模板必须铺成“裁切圆 + 出血”的圆，用方形背景会在四个正方向上差一个出血、成品露白边
+    if (isCircle) objects.push(circle(w / 2, h / 2, dieR + bleed, { fill: pal.bg }));
+    else objects.push(rect(0, 0, w, h, pal.bg));
     objects.push(...motif(motifKind, pal, w, h, safe, isCircle));
     // 圆形模板加一个靠内的细环：不然预览看上去是正方形，客户不知道成品是圆的
     if (isCircle && arch.layout !== 'badge') {
-        objects.push({ ...circle(w / 2, h / 2, Math.min(w, h) / 2 - 0.8), fill: 'none', stroke: pal.ink, strokeWidth: px(0.25), opacity: 0.55 });
+        objects.push({ ...circle(w / 2, h / 2, dieR - 0.8), fill: 'none', stroke: pal.ink, strokeWidth: px(0.25), opacity: 0.55 });
     }
 
-    // 圆形的内接方框：四角会被圆刀切掉，文字/分隔线必须落在里面
+    // 可放内容的内接方框：圆形按“安全圆”的内接正方形算（边长 √2·(R−安全区)），
+    // 否则文字四角会落在安全圆外，印出来就是“看着居中但贴到裁切线”
+    const side = isCircle ? Math.max(Math.min(w, h) * 0.4, Math.SQRT2 * Math.max(0, dieR - safe)) : 0;
     const inner = isCircle
-        ? { x: w * 0.15, y: h * 0.15, w: w * 0.7, h: h * 0.7 }
+        ? { x: (w - side) / 2, y: (h - side) / 2, w: side, h: side }
         : { x: safe, y: safe, w: w - safe * 2, h: h - safe * 2 };
     const name = slots[0], role = slots[1], note = slots[2];
     const bigMm = Math.min(inner.h * 0.22, 8);
@@ -303,9 +312,9 @@ function buildScene({ size, shape, pal, pair, motifKind, arch, slots }) {
         const r = Math.min(w, h) * 0.42;
         objects.push({ ...circle(w / 2, h / 2, r), fill: 'none', stroke: pal.ink, strokeWidth: px(0.35) });
         objects.push({ ...circle(w / 2, h / 2, r * 0.9), fill: pal.soft, opacity: 0.9 });
-        objects.push(text(name.sample, { xMm: w * 0.18, yMm: h * 0.3, wMm: w * 0.64, sizeMm: bigMm, font: pair.display, weight: 'bold', color: pal.ink, align: 'center', name: name.key }));
-        objects.push(text(role.sample, { xMm: w * 0.18, yMm: h * 0.52, wMm: w * 0.64, sizeMm: smallMm, font: pair.body, color: pal.ink, align: 'center', name: role.key }));
-        objects.push(text(note.sample, { xMm: w * 0.18, yMm: h * 0.66, wMm: w * 0.64, sizeMm: smallMm, font: pair.body, color: pal.ink, align: 'center', name: note.key }));
+        objects.push(text(name.sample, { xMm: inner.x, yMm: inner.y + inner.h * 0.18, wMm: inner.w, sizeMm: bigMm, font: pair.display, weight: 'bold', color: pal.ink, align: 'center', name: name.key }));
+        objects.push(text(role.sample, { xMm: inner.x, yMm: inner.y + inner.h * 0.5, wMm: inner.w, sizeMm: smallMm, font: pair.body, color: pal.ink, align: 'center', name: role.key }));
+        objects.push(text(note.sample, { xMm: inner.x, yMm: inner.y + inner.h * 0.68, wMm: inner.w, sizeMm: smallMm, font: pair.body, color: pal.ink, align: 'center', name: note.key }));
     } else if (arch.layout === 'underline-mark') {
         objects.push(text(name.sample, { xMm: inner.x, yMm: inner.y + inner.h * 0.28, wMm: inner.w, sizeMm: bigMm, font: pair.display, weight: 'bold', color: pal.ink, align: 'center', name: name.key }));
         objects.push(rect(inner.x + inner.w * 0.32, inner.y + inner.h * 0.52, inner.w * 0.36, 0.45, pal.accent));
@@ -345,42 +354,44 @@ function buildCombos() {
 }
 
 /**
- * 几何自检：用与设计器 runPreflight 相同的三条规则（超出血=error、跨裁切=warning、文字出安全区=warning）
- * 预查每个对象。不这么做的话，生成一批开局就吃黄条的模板，客户一进页面就看到警告。
+ * 几何自检：直接调应用里的 `dieline.ts`（解析刀版形状 + 三个判定区域 + 包含/穿越/盖住），
+ * 与设计器 runPreflight 同一套代码 → 这里绿了就是真绿（圆刀不再按矩形包围盒判）。
  */
 function checkScene(row) {
     const bad = [];
-    const W = row.widthMm * PX, H = row.heightMm * PX;
-    const bleed = row.bleedMm * PX, safe = row.safeAreaMm * PX;
-    const trim = { l: 0, t: 0, r: W, b: H };
-    const bleedBox = { l: -bleed, t: -bleed, r: W + bleed, b: H + bleed };
-    const safeBox = { l: safe, t: safe, r: W - safe, b: H - safe };
-    const has = (b) => b.l < b.r && b.t < b.b;
-    // eps 是“宽容方向”：允许超出 eps 以内（四舍五入/字宽估算），不是往外张望
-    const covers = (outer, inner, eps = 0) =>
-        inner.l >= outer.l - eps && inner.t >= outer.t - eps && inner.r <= outer.r + eps && inner.b <= outer.b + eps;
-    const overlaps = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+    const { trim, bleed, safe } = dieRegions(
+        parseDieShape(row.dielineSvg, { widthMm: row.widthMm, heightMm: row.heightMm, pxPerMm: PX }),
+        { widthMm: row.widthMm, heightMm: row.heightMm, pxPerMm: PX, bleedMm: row.bleedMm, safeAreaMm: row.safeAreaMm },
+    );
+    const toBox = (b) => ({ left: b.left, top: b.top, width: b.right - b.left, height: b.bottom - b.top });
 
+    let coversTrim = false;
     for (const o of row.sceneTemplate.objects) {
         if (o.visible === false) continue;
         const label = String(o.text ?? o.type).slice(0, 14);
-        let box;
+        let b;
         if (o.type === 'circle') {
             const r = o.radius ?? 0;
-            box = { l: o.left, t: o.top, r: o.left + r * 2, b: o.top + r * 2 };
+            b = { left: o.left, top: o.top, right: o.left + r * 2, bottom: o.top + r * 2 };
         } else {
             const h = o.type === 'textbox'
                 ? o.fontSize * (o.lineHeight ?? 1.16) * String(o.text ?? '').split('\n').length
                 : o.height ?? 0;
-            box = { l: o.left, t: o.top, r: o.left + (o.width ?? 0), b: o.top + h };
+            b = { left: o.left, top: o.top, right: o.left + (o.width ?? 0), bottom: o.top + h };
         }
-        if (!has(box)) continue;
-        const eps = 1; // px，约 0.13mm
-        if (!covers(bleedBox, box, eps)) bad.push(`outside-bleed “${label}” [${(box.l / PX).toFixed(1)},${(box.t / PX).toFixed(1)} → ${(box.r / PX).toFixed(1)},${(box.b / PX).toFixed(1)}]mm`);
-        // 与设计器同逻辑：整块覆盖成品线的背景不算跨裁切
-        else if (!covers(trim, box) && overlaps(box, trim) && !covers(box, trim)) bad.push(`crossing-trim “${label}”`);
-        else if (o.type === 'textbox' && !covers(safeBox, box, eps)) bad.push(`text-outside-safe “${label}”`);
+        if (b.right <= b.left || b.bottom <= b.top) continue;
+        const box = toBox(b);
+        // 圆形对象额外给出真实圆（与设计器同一口径）
+        const obj = o.type === 'circle'
+            ? { box, circle: { cx: (b.left + b.right) / 2, cy: (b.top + b.bottom) / 2, r: (b.right - b.left) / 2 } }
+            : { box };
+        if (coversRegion(obj, trim)) coversTrim = true;
+        if (!regionContains(bleed, obj)) bad.push(`outside-bleed “${label}”`);
+        else if (!regionContains(trim, obj) && regionOverlaps(trim, obj) && !coversRegion(obj, trim)) bad.push(`crossing-trim “${label}”`);
+        else if (o.type === 'textbox' && !regionContains(safe, obj)) bad.push(`text-outside-safe “${label}”`);
     }
+    // 满版模板：没东西盖住成品线 → 印出来四周露白底
+    if (row.fullBleed && !coversTrim && row.sceneTemplate.objects.length > 0) bad.push('no-full-bleed');
     return bad;
 }
 
@@ -430,6 +441,8 @@ async function main() {
             heightMm: size.h,
             bleedMm: size.bleed,
             safeAreaMm: size.safe,
+            // 生成模板都是满版设计（背景铺到裁切线）→ 标记 true，让预检真的去查“有没有露白底”
+            fullBleed: true,
             sceneTemplate: scene,
             slots: fam.slots.map((s) => ({ key: s.key, kind: 'text', label: s.label, maxLength: 40 })),
             active: true,

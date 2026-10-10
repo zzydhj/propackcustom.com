@@ -49,6 +49,8 @@ export default async function DesignPage({ params, searchParams }: Props) {
                 dielineSvg={tpl?.dielineSvg ?? undefined}
                 bleedMm={tpl?.bleedMm ?? 3}
                 safeAreaMm={tpl?.safeAreaMm ?? 3}
+                fullBleed={tpl?.fullBleed ?? false}
+                templateSlug={tpl?.slug}
             />
         );
     }
@@ -69,6 +71,8 @@ export default async function DesignPage({ params, searchParams }: Props) {
                 dielineSvg={selected.dielineSvg ?? undefined}
                 bleedMm={selected.bleedMm}
                 safeAreaMm={selected.safeAreaMm}
+                fullBleed={selected.fullBleed}
+                templateSlug={selected.slug}
                 initialScene={objects.length ? JSON.stringify({ version: '7.4.0', objects }) : undefined}
             />
         );

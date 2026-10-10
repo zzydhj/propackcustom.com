@@ -38,6 +38,7 @@ export default async function CustomizePage({ params }: Props) {
             bleedMm={tpl.bleedMm}
             safeAreaMm={tpl.safeAreaMm}
             dielineSvg={tpl.dielineSvg ?? undefined}
+            fullBleed={tpl.fullBleed}
             initialScene={objects.length ? JSON.stringify({ version: '7.4.0', objects }) : undefined}
         />
     );

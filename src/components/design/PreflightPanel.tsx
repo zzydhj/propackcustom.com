@@ -13,6 +13,7 @@ const MESSAGE: Record<PreflightIssue['kind'], string> = {
     'crossing-trim': 'crosses the trim line — part of it will be cut off',
     'text-outside-safe': 'is outside the safe area — too close to the cut line',
     'cmyk-out-of-gamut': 'is a colour four-colour printing cannot reach — it will print duller',
+    'no-full-bleed': 'nothing covers the cut shape — a white edge will show on the printed piece',
 };
 
 export default function PreflightPanel({ issues, onFocus }: Props) {
@@ -38,25 +39,29 @@ export default function PreflightPanel({ issues, onFocus }: Props) {
                 </p>
             ) : (
                 <ul className="space-y-1">
-                    {issues.map((issue) => (
-                        <li key={`${issue.index}-${issue.kind}`}>
-                            <button
-                                type="button"
-                                onClick={() => onFocus(issue)}
-                                title="Click to select this object on the canvas"
-                                className={`w-full rounded-lg border bg-white px-2.5 py-2 text-left text-xs transition hover:border-neutral-900 ${issue.severity === 'error' ? 'border-[#ff4d4f]/50' : 'border-[#d48806]/50'}`}
-                            >
-                                {issue.color && (
-                                    <span
-                                        className="mr-1.5 inline-block h-3 w-3 shrink-0 rounded-sm border border-neutral-300 align-[-2px]"
-                                        style={{ backgroundColor: issue.color }}
-                                    />
-                                )}
-                                <span className="font-semibold text-neutral-900">{issue.label}</span>{' '}
-                                <span className="text-neutral-500">{MESSAGE[issue.kind]}</span>
-                            </button>
-                        </li>
-                    ))}
+                    {issues.map((issue) => {
+                        // index < 0 = 整张图级别的问题（如没铺满出血），画布上没有对应对象可选中
+                        const selectable = issue.index >= 0;
+                        return (
+                            <li key={`${issue.index}-${issue.kind}`}>
+                                <button
+                                    type="button"
+                                    onClick={() => onFocus(issue)}
+                                    title={selectable ? 'Click to select this object on the canvas' : undefined}
+                                    className={`w-full rounded-lg border bg-white px-2.5 py-2 text-left text-xs transition ${selectable ? 'hover:border-neutral-900' : 'cursor-default'} ${issue.severity === 'error' ? 'border-[#ff4d4f]/50' : 'border-[#d48806]/50'}`}
+                                >
+                                    {issue.color && (
+                                        <span
+                                            className="mr-1.5 inline-block h-3 w-3 shrink-0 rounded-sm border border-neutral-300 align-[-2px]"
+                                            style={{ backgroundColor: issue.color }}
+                                        />
+                                    )}
+                                    <span className="font-semibold text-neutral-900">{issue.label}</span>{' '}
+                                    <span className="text-neutral-500">{MESSAGE[issue.kind]}</span>
+                                </button>
+                            </li>
+                        );
+                    })}
                 </ul>
             )}
 

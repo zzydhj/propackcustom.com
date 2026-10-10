@@ -371,6 +371,9 @@ model DesignTemplate {
   heightMm      Float?
   bleedMm       Float    @default(3)
   safeAreaMm    Float    @default(3)
+  // 满版模板：背景必须盖到裁切线，否则成品边缘会露白底，预检要报 warning。
+  // 默认 false：空白框架模板（客户自己摆内容）不该一打开就被警告。
+  fullBleed     Boolean  @default(false)
   sceneTemplate Json? // Fabric JSON 预置内容
   previewImage  String? // 缩略图：R2 对象键或直链（没图时前台回退渲染内联刀版 SVG）
   active        Boolean  @default(true)

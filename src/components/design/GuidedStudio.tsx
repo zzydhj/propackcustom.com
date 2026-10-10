@@ -23,6 +23,8 @@ type Props = {
     bleedMm: number;
     safeAreaMm: number;
     dielineSvg?: string;
+    /** 满版模板标记（来自 DesignTemplate.fullBleed） */
+    fullBleed?: boolean;
     initialScene?: string;
 };
 

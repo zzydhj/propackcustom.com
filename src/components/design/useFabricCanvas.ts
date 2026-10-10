@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, FabricImage, Textbox } from 'fabric';
 import type { FabricObject } from 'fabric';
 import { outOfCmykGamut } from '@/lib/color-gamut';
+import { coversRegion, dieRegions as buildDieRegions, parseDieShape, regionContains, regionOverlaps, type DieObject } from '@/lib/dieline';
 
 // 预览基准：1mm = 8px（≈200dpi 预览，桌面画布显示更大；导出 PNG 用 multiplier 达 300dpi+，矢量 PDF 走后端链）
 export const PX_PER_MM = 8;
@@ -21,6 +22,10 @@ type Opts = {
     safeAreaMm?: number;
     /** 引导式（快速定制）页：锁定画布，客户只能填字段不能拖、不能改结构 */
     lockEditing?: boolean;
+    /** 刀版 SVG：预检从里解析裁切形状（圆刀不再按矩形包围盒判，形状不另存一份以免与刀版对不上） */
+    dielineSvg?: string | null;
+    /** 满版模板：背景必须盖到裁切线，否则报“会露白底” */
+    fullBleed?: boolean;
 };
 
 export type IssueBox = { left: number; top: number; width: number; height: number };
@@ -29,24 +34,12 @@ export type IssueBox = { left: number; top: number; width: number; height: numbe
 export type PreflightIssue = {
     index: number;
     severity: 'error' | 'warning';
-    kind: 'outside-bleed' | 'crossing-trim' | 'text-outside-safe' | 'cmyk-out-of-gamut';
+    kind: 'outside-bleed' | 'crossing-trim' | 'text-outside-safe' | 'cmyk-out-of-gamut' | 'no-full-bleed';
     label: string;
     rect: IssueBox;
     /** 仅 cmyk-out-of-gamut ：问题颜色原值，UI 用它画色块 */
     color?: string;
 };
-
-function overlap(a: IssueBox, b: IssueBox): boolean {
-    return a.left < b.left + b.width && a.left + a.width > b.left
-        && a.top < b.top + b.height && a.top + a.height > b.top;
-}
-
-function contains(outer: IssueBox, inner: IssueBox): boolean {
-    return inner.left >= outer.left - 0.5
-        && inner.top >= outer.top - 0.5
-        && inner.left + inner.width <= outer.left + outer.width + 0.5
-        && inner.top + inner.height <= outer.top + outer.height + 0.5;
-}
 
 function objectLabel(o: FabricObject): string {
     const custom = (o as { name?: string }).name;
@@ -138,7 +131,7 @@ function readActive(c: Canvas): ActiveTarget | null {
 // 只在客户端 useEffect 里 new Canvas（SSR 不执行），故对本模块的顶层 fabric import 安全——
 // 前提是它只被 dynamic(ssr:false) 的组件引用（见 DesignCanvas）。
 export function useFabricCanvas(opts: Opts = {}) {
-    const { widthMm = 100, heightMm = 100, background = '#ffffff', bleedMm = 0, safeAreaMm = 0, lockEditing = false } = opts;
+    const { widthMm = 100, heightMm = 100, background = '#ffffff', bleedMm = 0, safeAreaMm = 0, lockEditing = false, dielineSvg = null, fullBleed = false } = opts;
     const canvasElRef = useRef<HTMLCanvasElement | null>(null);
     const canvasRef = useRef<Canvas | null>(null);
     const [ready, setReady] = useState(false);
@@ -204,29 +197,39 @@ export function useFabricCanvas(opts: Opts = {}) {
         }
     }, [lockEditing]);
 
-    // 印前几何校验：超出出血框=error，跨裁切线=warning，文字出安全区=warning；另跟一条色域预警
-    // 三个基准框用场景 px（成品线 / 出血线 / 安全区），mm 换算与导引线 overlay 共用 PX_PER_MM
+    // 刀版形状：从 dielineSvg 现场解析（圆刀/方刀），再由出血、安全区推出三个判定区域。
+    // 以前一律用矩形包围盒 → 圆形贴纸“文字在方框内但在圆外”不报，印出来才发现被切。
+    const dieRegions = useMemo(
+        () => buildDieRegions(parseDieShape(dielineSvg, { widthMm, heightMm, pxPerMm: PX_PER_MM }), {
+            widthMm, heightMm, pxPerMm: PX_PER_MM, bleedMm, safeAreaMm,
+        }),
+        [dielineSvg, widthMm, heightMm, bleedMm, safeAreaMm],
+    );
+
+    // 印前几何校验：超出出血=error，跨裁切线=warning，文字出安全区=warning，另跟色域预警与满版检查
     const runPreflight = useCallback((c: Canvas) => {
-        const bleedPx = bleedMm * PX_PER_MM;
-        const safePx = safeAreaMm * PX_PER_MM;
-        const trimBox: IssueBox = { left: 0, top: 0, width: baseW, height: baseH };
-        const bleedBox: IssueBox = { left: -bleedPx, top: -bleedPx, width: baseW + bleedPx * 2, height: baseH + bleedPx * 2 };
-        const safeBox: IssueBox = { left: safePx, top: safePx, width: Math.max(0, baseW - safePx * 2), height: Math.max(0, baseH - safePx * 2) };
+        const { trim, bleed, safe } = dieRegions;
 
         const found: PreflightIssue[] = [];
+        let coversTrim = false;
         c.getObjects().forEach((o, index) => {
             if (o.visible === false) return;
             const r = o.getBoundingRect();
             const box: IssueBox = { left: r.left, top: r.top, width: r.width, height: r.height };
+            // 圆形对象带上真实圆：否则它的外接矩形四角永远比圆大，满出血背景圆会被误判“超出出血”
+            const obj: DieObject = o.type === 'circle'
+                ? { box, circle: { cx: r.left + r.width / 2, cy: r.top + r.height / 2, r: r.width / 2 } }
+                : { box };
             const label = objectLabel(o);
-            if (!contains(bleedBox, box)) {
+            if (coversRegion(obj, trim)) coversTrim = true;
+            if (!regionContains(bleed, obj)) {
                 found.push({ index, severity: 'error', kind: 'outside-bleed', label, rect: box });
                 return;
             }
-            // 部分在成品内、部分在外：会被裁掉（整张铺满成品线的背景不算）
-            if (!contains(trimBox, box) && overlap(box, trimBox) && !contains(box, trimBox)) {
+            // 部分在成品内、部分在外：会被裁掉（整张盖住成品线的背景不算）
+            if (!regionContains(trim, obj) && regionOverlaps(trim, obj) && !coversRegion(obj, trim)) {
                 found.push({ index, severity: 'warning', kind: 'crossing-trim', label, rect: box });
-            } else if (o instanceof Textbox && !contains(safeBox, box)) {
+            } else if (o instanceof Textbox && !regionContains(safe, obj)) {
                 found.push({ index, severity: 'warning', kind: 'text-outside-safe', label, rect: box });
             }
             // 色域预警与几何无关：位置正确但颜色不可印同样要报（只查实心 fill，栅格图不查）
@@ -235,8 +238,16 @@ export function useFabricCanvas(opts: Opts = {}) {
                 found.push({ index, severity: 'warning', kind: 'cmyk-out-of-gamut', label, rect: box, color: fill });
             }
         });
+
+        // 满版模板：没有任何对象盖住成品线 → 四周会露白底（空模板不报，否则客户一打开就被警告）
+        if (fullBleed && !coversTrim && c.getObjects().some((o) => o.visible !== false)) {
+            found.unshift({
+                index: -1, severity: 'warning', kind: 'no-full-bleed', label: 'Background',
+                rect: { left: 0, top: 0, width: baseW, height: baseH },
+            });
+        }
         setIssues(found);
-    }, [baseW, baseH, bleedMm, safeAreaMm]);
+    }, [baseW, baseH, dieRegions, fullBleed]);
 
     const record = useCallback((c: Canvas) => {
         if (restoring.current) return;
