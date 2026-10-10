@@ -137,18 +137,22 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 - 图案是 60+ 个 13×13px 小矩形拼的 → 印证“背景必须归并成一张图”，不能当 Fabric 对象逐个存。
 - 组图层包围盒 0×0 → 再次印证“空层无几何”。
 
-**`包装盒.ai`（3.1MB）——这才是好源文件，而且 **AI/PDF 路线被实测成立**：**
-- 文件头 `%PDF-1.6`，`Creator=Adobe Illustrator 30.2`、`Producer=Adobe PDF library 18.00` → **带 PDF 兼容流，可用 PDF 解析器读**（ag-psd 会直接拒：`Invalid signature: '%PDF'`）。
-- 含 **`/OCProperties` + `/OCGs`** → Illustrator 图层以 OCG 形式保留，可分离背景/文字/刀版。
-- 含 **`/TrimBox` + `/BleedBox` + `/CropBox`** → **成品线与出血线在文件里就是现成的**（比 PSD 干净得多，PSD 需要人画标记层）。
-- 56 个 `/Font` 引用；`Tj/TJ` 字节扫描为 0 —— 因为内容流是 Flate 压缩的，**说明必须上真正的 PDF 解析器**（解压后才能拿到矢量文字/路径）。
+**`包装盒.ai`（3.1MB）——容器是好的，但内容**不适合自动导入**（已用 `scripts/ai-pdf-spike.mts` 逐项取证）：**
+- 文件头 `%PDF-1.6`、`Creator=Adobe Illustrator 30.2` → **带 PDF 兼容流，能用 PDF 解析器读**（ag-psd 直接拒：`Invalid signature: '%PDF'`）。
+- ✅ **文字可提**：20 条带坐标的矢量文本，均落在成品线内；尺寸 2.42–3.98mm（实测能换算到 mm）。
+- ✅ **矢量丰富**：内容流 `constructPath` **608** 条（不是位图稿），全部能解出包围盒；其中 2 条几乎铺满成品线（背景/裁切框）。
+- ❌ **只有一个图层**：`/OCProperties/OCGs` 就一项，名叫 `图层 1`；而且内容流里 **没 BDC/EMC 标记**（`beginMarkedContent:0`）→ **所有文字/路径都归 `(no-ocg)`，无法自动分背景/文字/刀版**。
+- ❌ **无出血**：`TrimBox == BleedBox == CropBox == MediaBox` = 735.59×719.12pt = **259.5×253.69mm，bleed 算出来 0mm**。而且成品线原点就是 (0,0)。
+- ⚠️ **子集字体无 ToUnicode** → 20 条文字里 **14 条是乱码**（只剩控制码），能读的只有 “TPU with backplate / FOR STANDARD PSA SLABS / GRADED CARD” 这类英文。字体表：`XOLEYU+AcuminVariableConcept`、`GMUGUC+GoodTimesRg-Regular`、**`SJYAGE+MicrosoftYaHei-Bold`、`GMUGUC+DengXian-Bold`**（微软雅黑/等线 → 商业字体风险坐实）。
+- ⚠️ 这个文件的 `/Producer` 是 **pdf-lib**（不是 Adobe PDF library）→ **它已经被某个工具重写过**，图层被拍平、box 被拉平很可能就是这一步造成的。**不能拿它当“AI 导出应该长什么样”的基准**。
 
-### 因此 P1 的技术选择已经清楚
+### 因此 P1 的技术选择（已按实测修正）
 
-1. **优先做 AI/PDF（OCG）解析路线**，PSD 降为兜底：刀版/出血直接读 TrimBox/BleedBox，图层读 OCG，文字读内容流里的矢量文本（pt→mm 精确）。
-2. 需要装一个 PDF 解析依赖（候选：`pdf-lib`（读结构/OCG 方便）、`pdfjs-dist`（能解内容流与文本定位）、`mupdf`（最强但体积大））——**选哪个需要拿这个 .ai 实际试跑**。
+1. **AI/PDF 路线技术可行，但不能“无脑批量”**：容器/尺寸/文字/路径都能读，但**图层分离靠文件本身有规范**。现实的前置是：要么给设计师一份《图层命名与导出规范》（至少：背景 / 文字 / 刀版 三个图层 + 开 PDF 兼容 + 保留图层标记），要么做成“**自动抽草稿 + 人工标注台**”。没有规范就自动，结果就是这份文件：**1 个图层 + 0 出血 + 70% 文字乱码**，看着能发其实不能用。
+2. 依赖已选定并实测：**`pdf-lib`（结构：页框/OCG 名/字体表）+ `pdfjs-dist@6.4`（内容流：文字带坐标 + 路径）**，两者 MIT/Apache。**不用 mupdf（AGPL，商业站风险）**。均为 devDependency（产品代码用到时再升为 dependencies）。
 3. 背景必须归并成图（worker 渲染），产物按 `templates/source/<yyyy>/<mm>/<sha12>-<原名>` 存 R2（桶已可用）。
-4. 字体：商业字体（方正/雅黑）要么买授权子集化，要么强制回退托管字体并报警 —— 映射器已有后者。
+4. 字体：商业字体（雅黑/等线/方正）要么买授权子集化，要么强制回退托管字体并报警 —— 映射器已有后者。
+5. **文字解码必须做“失败可识别”**：无 ToUnicode 时不能把乱码当文案入库（现在 spike 会原样输出，导入器必须按“可读字符比例”判并降级为占位文本）。
 
 ### 旧有结论（仍有效）
 

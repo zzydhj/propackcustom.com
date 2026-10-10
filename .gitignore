@@ -53,3 +53,6 @@ verify-*.svg
 *.ai
 *.eps
 *.cdr
+
+# 导入 spike 的取证报告（每次跑都会重生成，不进仓库）
+scripts/out/

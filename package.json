@@ -39,6 +39,8 @@
     "ag-psd": "^31.0.3",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.4.299",
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "typescript": "^5"
