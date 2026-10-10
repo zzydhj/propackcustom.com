@@ -121,6 +121,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 33. **pdfjs 的 cmaps/standard_fonts 路径必须从包本身解析**（`createRequire(import.meta.url).resolve('pdfjs-dist/legacy/build/pdf.mjs')` 往上三级）。拿 `import.meta.url` 拼 `../node_modules/...` 会跟着文件搬家而错：实测在 `src/lib/` 里算出 `src/node_modules/...`，CMap 加载失败 → **牙签旗.ai 从 3 条文字变 0 条，被误判成「死图不可发布」**。这类错不会报错，只会让结果默默变坏。
 34. **应库前用 `sceneToSvg` 自校场景**（导入器现在会比对 `text=` 节点数与 `slots` 数，不一致直接 block）—— 它就是模板卡片出图用的同一个函数，对不上数就是坏模板。
 35. **`ensureUniqueSlug(raw, excludeId)` 更新时必须传自己的 id**：不传会撞上自己那一行，**每重跑一次批处理 slug 就多一个 -2/-3 后缀**（实测踩过，连跑两次已验证修正后幂等）。同理去重集合要存 hash→id，不能只存 hash。
+36. **改 URL 结构后要把所有入口重查一遍**（本项目这类遗漏已出三次）：`/design` 从 `?type=` 改成路径后，页眉的 Design Studio 还链在 `/design/label`（分类走 ?type= 时代的遗留），而分类页又没有胶囊筛选条（胶囊只住在 /design），导致换分类必须先后退。现在两处共用 `src/components/design/TemplateFilterBar.tsx`（当前分类胶囊高亮 + 搜索提交到当前路径 = 分类内搜索）。另：分类页带 `q` 且 0 结果时**不能**落到“该类型无模板 → 空白编辑器”分支，否则搜索失败被伪装成分类为空。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -215,7 +216,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 
 ## 7. 关键文件速查
 
-- 模板库（10 万级改造后）：**`src/lib/template-query.ts`**（分页/筛选/facet/深翻页上限/内容指纹/唯一 slug —— 所有列表查询只走这里）、`src/lib/template-slug.ts`（纯 slug 规则）、`src/components/ui/Pager.tsx`（前后台共用，`lang: 'en'|'zh'`）、`src/components/design/TemplateCard.tsx`（前台卡片）、`src/app/[locale]/admin/templates/page.tsx`（表格 + URL 驱动的单表单：`?q=&type=&page=&edit=&new=`）
+- 模板库（10 万级改造后）：**`src/lib/template-query.ts`**（分页/筛选/facet/深翻页上限/内容指纹/唯一 slug —— 所有列表查询只走这里）、`src/lib/template-slug.ts`（纯 slug 规则）、**`src/lib/query-string.ts`**（`withQuery()`：三个列表页共用的查询串拼接）、**`src/components/design/TemplateFilterBar.tsx`**（类型胶囊 + 搜索，/design 与分类页共用，当前分类高亮）、`src/components/ui/Pager.tsx`（前后台共用，`lang: 'en'|'zh'`）、`src/components/design/TemplateCard.tsx`（前台卡片）、`src/app/[locale]/admin/templates/page.tsx`（表格 + URL 驱动的单表单：`?q=&type=&page=&edit=&new=`）
 - 免费设计引导：`src/components/design/FreeDesignCallout.tsx`（一份文案三个密度：`banner`=/design 与 /design/[type] 顶部横条、`rail`=引导页左栏竖卡、`strip`=编辑器左工具栏紧凑条）。主 CTA = `/quote?intent=design-help`；第二入口（mailto）只在 `NEXT_PUBLIC_SALES_EMAIL` 配了真邮箱才渲染。口径：“Free with any order”，不承诺无条件免费打样。配套：`src/lib/contact.ts`、`src/lib/quote-intent.ts`
 - 印前与刀版：**`src/lib/dieline.ts`**（从 dielineSvg 解析裁切形状 + 三个判定区域 + `DieObject`；预检与生成器共用一份规则）、`src/lib/color-gamut.ts`（色域预警）、**`src/lib/production-export.ts`**（`svgWithDielineLayer` 拆 PRINT/DIELINE 两组；`appendDielinePage` 给 PDF 加第 2 页 1:1 刀版层；刀线只取自模板，不由客户带）、`src/components/design/PreflightPanel.tsx`（kind 新增 `no-full-bleed`；`index<0` 的图级问题不可点选）
 - 单位与 AI 导入：**`src/lib/scene-units.ts`**（`PX_PER_MM` 唯一定义处，`useFabricCanvas` 再导出它）、**`src/lib/pdf-facts.ts`**（仅提取事实：页框/OCG/字体/带坐标文字/路径计数）、**`src/lib/ai-template.ts`**（纯映射：事实 → 模板草稿 + slots + issues + publishable）、**`scripts/import-ai.mts`**（批量导入器）、`scripts/ai-pdf-spike.mts`（单文件取证报告，已改为复用上面两个模块）
