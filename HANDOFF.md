@@ -104,6 +104,8 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 21. **想在 Node 里复用应用内的 TS 纯函数**（避免脚本里另写一份规则造成偏差）：`node --experimental-strip-types scripts/x.mts` + `import ... from '../src/lib/y.ts'`；tsconfig 已开 `allowImportingTsExtensions`（靠 `noEmit` 才合法）。生成器已改成这样跑（**必须带这个 flag**）。
 22. **从刀版 SVG 解析形状时，小圆会抢走“裁切线”的位置**：吊带的打孔圆（r=1.8mm）曾被当成刀版，导致整张所有对象都被报“超出出血”。现在只有直径 ≥ min(宽,高)×0.85 的圆才算裁切轮廓（`parseDieShape`）。
 23. **圆形对象不能用外接矩形做包含判定**：圆的外接框四角永远比圆大，一个刚好铺满出血的背景圆会被判“超出出血”→ 圆模板永久报红。`dieline.ts` 的 `DieObject` 允许对象附带真实圆，两个判定口径（引擎/脚本）共用。
+24. **R2 已接通（2026-10-10 实测）**：`r2Enabled()=true`，PUT 200 → HEAD → 预签名 GET 内容一致 → **公共域名 `https://file.propackcustom.com/...` 直接 200 可访问** → DELETE 204 后 HEAD NotFound。坑：**`R2_BUCKET` 原本写的是 `propack-artworks`，而令牌只授权 `propackcustom` → 写入 403 AccessDenied**；令牌是桶作用域的，ListBuckets 也会 AccessDenied（这不代表凭证错）。中文对象键安全（SDK 会 percent-encode）。
+25. **桶内目录必须按 `objectKey()` 的规范走**（用户明确要求不得混乱）：`uploads/{artwork,proofs}/<yyyy>/<mm>/<dd>-<rand>-<原名>`（上传类按月分片）、`exports/designs/<designId>/`、`production/orders/<orderNo>/`（产物类按实体归组）、`templates/source/<yyyy>/<mm>/<sha12>-<原名>`、`templates/preview/<slug>.<ext>`（稳定键可覆盖）、`tmp/`（建议配 7 天生命周期规则）。新增用途就改 `LAYOUT` 一处。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -111,7 +113,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 
 | # | 项 | 说明 | 难度 |
 |---|---|---|---|
-| 1 | 导出成品入 R2（`UserDesign.exportKey/thumbKey` 已留） | **阻塞：`.env` 里 R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY 全为空**（只 R2_BUCKET 有值），`r2Enabled()`=false。需先去 Cloudflare 建桶 + 建 R2 API Token | 中 |
+| 1 | 导出成品入 R2（`UserDesign.exportKey/thumbKey` 已留） | ✅ **R2 本身已接通并实测**（不再是阻塞项）；但“导出成品落桶”这个功能本身还没做（写入路径+键已备好：`exports/designs/<designId>/`） | 中 |
 | 2 | CMYK 色彩路线 | ✅ 已按 a) 做完：`src/lib/color-gamut.ts` 只做色域预警（sRGB→Lab + 涂布四色上限曲线，**不做任何通道换算**）；b)/c)（附印厂 RIP 说明 / 服务端 ICC 真转）仍未做 | — |
 | 3 | 属性面板二期：锁定/显隐/图层列表/多选对齐/等比缩放 | ✅ 已完成（含改名联动 Pre-flight、name/locked 持久化、隐藏对象不进导出 SVG）；剩下：分组(group)、对象重名时无后缀区分 | 一期已完 |
 | 4 | 文字转曲导出（outlines） | PDF 提示已有；真转曲需字体解析 | 难 |
@@ -124,9 +126,31 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 | 11 | 模板库发现体验补齐 | 待做：色系/风格/行业 facet（tags 已写，查询层还没按它筛）、Most Popular/Newest 排序、模板详情页（Avery 那种）、收藏/More like this | 中 |
 | 12 | 刀版三件套（印刷正确性） | ✅ 已完成（2026-10-10）：① 预检按 `dielineSvg` 解析出的**真实形状**判定（圆刀按安全圆/出血圆，不再用矩形包围盒）② `fullBleed` 满版检查（没东西盖住成品线→“会露白底”）③ 生产交付：SVG 拆 `<g id="PRINT">` + 非印刷 `<g id="DIELINE">`，PDF 第 2 页 1:1 刀版层。**剩下**：异形（path 刀线）仍退化成矩形；作业单页（job ticket）未加 | 中 |
 
-## 6A. PSD / AI 批量导入（P0 Spike 已跑完；模板库前置已做完，等真实源文件才能定 P1）
+## 6A. PSD / AI 批量导入（**已拿到真实样本并跑完，结论见下**）
 
-需求：几百上千个 PSD（名片/贴纸/吊牌…）→ 自动变成云端可二次编辑的模板。**产品形态已定：背景锁定 + 少量命名槽位**（Printful/Canva 式），不是全图层可编辑。
+### 真实样本实测（2026-10-10，用户提供的两个文件）
+
+**`化妆品banner设计.psd`（63MB）——不能用作模板，原因全部可验证：**
+- 1920×600px、**96dpi**（=208×158.5mm）→ 是**网页 banner**，不是印刷文件（无出血/无刀版/分辨率不够）。
+- 95 个图层，**顶层图层名全部是 `众图网www.ztupic.com`**（素材站水印）→ 没有任何 `__text:/__slot:` 命名→ 映射器识别 **0 个槽位**（行为正确：报 `no-editable-slot`、不可发布）。
+- 文字层能读到内容+字体：`缓解干燥-秋季必备保湿单品`/MicrosoftYaHei、`圣诞狂欢`/FZLTDHK--GBK1-0、`提前把快乐带回家`/FZLTXHK--GBK1-0 → **方正/微软雅黑商业字体，网页不能嵌**（字体策略这个未决问题已证实是真的）。
+- 图案是 60+ 个 13×13px 小矩形拼的 → 印证“背景必须归并成一张图”，不能当 Fabric 对象逐个存。
+- 组图层包围盒 0×0 → 再次印证“空层无几何”。
+
+**`包装盒.ai`（3.1MB）——这才是好源文件，而且 **AI/PDF 路线被实测成立**：**
+- 文件头 `%PDF-1.6`，`Creator=Adobe Illustrator 30.2`、`Producer=Adobe PDF library 18.00` → **带 PDF 兼容流，可用 PDF 解析器读**（ag-psd 会直接拒：`Invalid signature: '%PDF'`）。
+- 含 **`/OCProperties` + `/OCGs`** → Illustrator 图层以 OCG 形式保留，可分离背景/文字/刀版。
+- 含 **`/TrimBox` + `/BleedBox` + `/CropBox`** → **成品线与出血线在文件里就是现成的**（比 PSD 干净得多，PSD 需要人画标记层）。
+- 56 个 `/Font` 引用；`Tj/TJ` 字节扫描为 0 —— 因为内容流是 Flate 压缩的，**说明必须上真正的 PDF 解析器**（解压后才能拿到矢量文字/路径）。
+
+### 因此 P1 的技术选择已经清楚
+
+1. **优先做 AI/PDF（OCG）解析路线**，PSD 降为兜底：刀版/出血直接读 TrimBox/BleedBox，图层读 OCG，文字读内容流里的矢量文本（pt→mm 精确）。
+2. 需要装一个 PDF 解析依赖（候选：`pdf-lib`（读结构/OCG 方便）、`pdfjs-dist`（能解内容流与文本定位）、`mupdf`（最强但体积大））——**选哪个需要拿这个 .ai 实际试跑**。
+3. 背景必须归并成图（worker 渲染），产物按 `templates/source/<yyyy>/<mm>/<sha12>-<原名>` 存 R2（桶已可用）。
+4. 字体：商业字体（方正/雅黑）要么买授权子集化，要么强制回退托管字体并报警 —— 映射器已有后者。
+
+### 旧有结论（仍有效）
 
 - 契约与验证：`src/lib/psd-template.ts`（纯函数，不依赖 ag-psd、不碰像素）+ `scripts/psd-spike.mjs`（19 项断言全绿，`node scripts/psd-spike.mjs a.psd` 可直接跑真实文件）。
 - **图层命名规范（没这套规范自动化必翻车）**：`__text:key__` 文字槽位 / `__slot:key__` 图片槽位 / `__dieline__` / `__bleed__`（含出血外扩矩形）/ `__safe__`（安全区内缩矩形）；其余图层归背景。画布尺寸 = 成品（trim）尺寸，文字层不开图层样式。

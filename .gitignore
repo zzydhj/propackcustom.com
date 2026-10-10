@@ -46,3 +46,10 @@ _verify_*.png
 verify-*.png
 verify-*.svg
 .qoder-*.png
+
+# 本地设计源文件样本（PSD/AI 等，几百 MB 且可能含客户资产，绝不入库）
+/Test file/
+*.psd
+*.ai
+*.eps
+*.cdr
