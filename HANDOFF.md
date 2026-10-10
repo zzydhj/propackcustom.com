@@ -98,6 +98,9 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 16. **中间件里拼重定向地址不要手拼字符串**：`new URL(`/${rest}${search}`, req.url)` 在 `rest` 已以 `/` 开头时得 `//design?q=x`，被当成**协议相对 URL** → 跳到 `http://design/`（实测踩过，很隐讳）。正确写法：`new URL(rest === '' ? '/' : rest, req.url)` 再 `target.search = search`。
 17. **客户可见的联系方式只认 `NEXT_PUBLIC_SALES_EMAIL`**（`src/lib/contact.ts`）：必须用公开变量，因为卡片会出现在 `ssr:false` 的客户端树里，普通 `SALES_EMAIL` 进不了客户端 bundle（永远是 undefined）；而且 no-reply/noreply/postmaster/abuse 这类地址会被过滤成 undefined → **入口直接隐藏**。三态已实测：真邮箱→出 mailto、no-reply→隐藏、不配→隐藏。不要把 `EMAIL_FROM`（当前是 no-reply@）挂到转化卡片上。
 18. **报价表单的来意走 `src/lib/quote-intent.ts` 白名单**：卡片 CTA = `/quote?intent=design-help`，报价页解析后渲染顶部说明 + 预填 `notes`（QuoteForm 新增 `intent` 可选 prop）。只认白名单，用户手改的任意值不灌进表单（实测 `?intent=<script>` 无 banner 无预填）。
+19. **跑写库脚本前先停 dev server**：Neon 连接数会被跑着的 dev server 占满，脚本开新连接直接 P1001（症状：页面能开、脚本连不上）。`Get-Process node | Stop-Process -Force` → 跑脚本 → 重启 dev。冷启动 P1001 另需等 15–30s 重试。
+20. **内置浏览器视图在后台时，`ssr:false` 的页面永远不水合**（`document.hidden=true` → rAF 不触发 → React 不 hydrate），截图也全失败。设计器/引导页这类客户端页面要实测，必须先确认该视图在前台；否则只能验 SSR 页。
+21. **想在 Node 里复用应用内的 TS 纯函数**（避免脚本里另写一份规则造成偏差）：`node --experimental-strip-types scripts/x.mts` + `import ... from '../src/lib/y.ts'`；tsconfig 已开 `allowImportingTsExtensions`（靠 `noEmit` 才合法）。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -114,6 +117,9 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 | 7 | 测试数据清理 | ✅ 已清：15 条测试 UserDesign 已删（脚本 `scripts/cleanup-test-data.mjs`，默认 dry-run）；4 订单+1 报价保留未动，要删需你确认 | — |
 | 8 | PSD/AI 批量导入 P1+ | 见 §6A：P0 spike 已跑完，卡在“需要真实源文件 + 5 个未决问题”；**它的前置（表字段 + 分页列表）已清掉**，剩下的是解析器 + 导入作业 + 审核台 | 中大 |
 | 9 | 模板库 10 万级规模改造 | ✅ 已完成（2026-10-09）：字段 + 索引 + 查询层（分页/facet/去重 slug/内容指纹）+ 后台表格化（一行一表单→零个常驻表单）+ 前台分页搜索；20k 行实测执行计划已校正 | — |
+| 10 | 内容模板库（定位①的“有东西可逛”） | ✅ 第一批已入库：`scripts/generate-templates.mjs` 生成 **200 个**自有版权可编辑模板（版式骨架×配色×图案×字体），库内共 205；卡片预览改成服务端编译 SVG（`src/lib/scene-svg.ts`，不依赖 R2） | — |
+| 11 | 模板库发现体验补齐 | 待做：色系/风格/行业 facet（tags 已写，查询层还没按它筛）、Most Popular/Newest 排序、模板详情页（Avery 那种）、收藏/More like this | 中 |
+| 12 | 刀版三件套（印刷正确性） | 待做，比模板库更影响接单：① 模板声明裁切**形状**（现在预检用矩形包围盒，圆形贴纸“方框内≠圆内”）② 满版检查（背景没铺到出血时会出白边，现在不报）③ 生产交付包 `production.pdf`（第1页印刷层/第2页刀版层）+ SVG 的 `DIELINE` 独立图层；**刀线必须来自模板版本，不能让客户改** | 中 |
 
 ## 6A. PSD / AI 批量导入（P0 Spike 已跑完；模板库前置已做完，等真实源文件才能定 P1）
 
@@ -131,6 +137,16 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 - **AI/PDF 路线（用户 2026-10-09 补充：源文件可能是 .ai）——已建议优先做这条**：现代 `.ai` 默认内嵌 PDF 兼容流，Illustrator 图层→PDF **OCG（可选内容组）**，可分离背景/文字/刀版；文字是矢量可直提（字体名/字号/坐标），单位 pt 换 mm 比 PSD 反算更准，刀版本身就是矢量路径，且交付印厂不丢矢量。代价：只有开了“创建 PDF 兼容文件”的能读，老 AI8/9 二进制无解。**需拿真实 .ai/.pdf 样本跟 .psd 一起跑 spike 才能定。**
 - **已完成的前置**：`DesignTemplate` 已有 `slots`/`sourceKey`/`sourceHash`/`widthPx`/`heightPx`/`dpi`/`tags`；列表已服务端分页（后台 25/前台 24）；`sourceHashOf()` 做内容去重、`ensureUniqueSlug()` 做 slug 撞车避让；`previewImage` 已接进卡片（有图用图，无图回退内联刀版 SVG）。导入器只需往上灌数据。
 
+## 6B. 模板库现状（2026-10-10：内容模板第一批）
+
+- 库内 **205 个上架模板** = 5 个手工种子 + 200 个生成（`sourceKey='generated@template-kit'` 标记；`node scripts/generate-templates.mjs --clean` 只删这批）。
+- **产品类型已拆出 `sticker`**（用户定的）：card 51 / label 41 / sticker 29 / tag 34 / box 44。模板库 chip 与 `/design/[type]` 自动出现新类型，不用改代码（列表查询走 facet，没硬编枚举）。
+- 生成器：**确定性 seed**（重跑同一批）、`--dry-run` 只算不写；写入是“先删后写整批重建”——按 sourceHash 跳过 + `createMany.skipDuplicates` 会让改过版式的模板**因 slug 撞车静默丢弃**（实测 `created=0` 才发现）。
+- 生成器内置**几何自检**：用与 `runPreflight` 相同的三条规则（超出血/跨裁切/文字出安全区）预查每个对象，200 个全 0 违规。它已实际抓到两个真 bug：小尺寸色带版式文字顶边 3.1mm < 安全区 3.5mm；`corner` 图案圆戳出出血框。
+- 色域：`node --experimental-strip-types scripts/check-template-colors.mts` → **205 模板 / 1696 个 fill 全部在 CMYK 色域内**（用的是应用里真实的 `outOfCmykGamut`，不是脚本副本）。
+- 卡片预览三级回退：`previewImage`（将来 R2 缩略图）→ `sceneToSvg(sceneTemplate)`（现在生效）→ 内联刀版 SVG。`src/lib/scene-svg.ts` 只支持 textbox/rect/circle/image，**不支持的 type 直接跳过不报错**，场景 >300KB 也主动放弃（不依赖 R2、不跑浏览器）。
+- 已知不足：前 5 张卡片是手工种子，场景只有一行占位文字，看上去“很空”（生成模板从第 6 张起才有真实构图）——要么把种子也铺上设计，要么调排序。圆形贴纸的方形构图问题已修（强制内接方框 + 靠内细环）。
+
 ## 7. 关键文件速查
 
 - 模板库（10 万级改造后）：**`src/lib/template-query.ts`**（分页/筛选/facet/深翻页上限/内容指纹/唯一 slug —— 所有列表查询只走这里）、`src/lib/template-slug.ts`（纯 slug 规则）、`src/components/ui/Pager.tsx`（前后台共用，`lang: 'en'|'zh'`）、`src/components/design/TemplateCard.tsx`（前台卡片）、`src/app/[locale]/admin/templates/page.tsx`（表格 + URL 驱动的单表单：`?q=&type=&page=&edit=&new=`）
@@ -145,7 +161,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 - 首页：`src/app/[locale]/page.tsx`（各段都是本文件内的展示型函数；新横幅 `DesignStudioBand` 在 `Categories` 后）· 文案 `messages/en.json`
 - 色彩：`src/lib/color-gamut.ts`（sRGB→Lab + CMYK 色域近似上限，**只预警不换算**）
 - PSD 导入 spike：`src/lib/psd-template.ts`（纯映射契约）· `scripts/psd-spike.mjs`（自检 + 跑真实 PSD）· 详见 §6A
-- 维护脚本：`scripts/cleanup-test-data.mjs`（测试数据清理，默认 dry-run）· `scripts/template-scale-check.mjs`（模板库规模压测：灌 N 条临时模板→量查询+看执行计划→自清，`--rows=20000`）· `prisma/seed-templates.mjs`（模板 upsert 幂等）
+- 维护脚本：`scripts/cleanup-test-data.mjs`（测试数据清理，默认 dry-run）· `scripts/template-scale-check.mjs`（模板库规模压测：灌 N 条临时模板→量查询+看执行计划→自清，`--rows=20000`）· **`scripts/generate-templates.mjs`**（生成内容模板：`--count=200` 重建、`--dry-run` 只算+自检、`--clean` 只删这批）· **`scripts/check-template-colors.mts`**（拿真实色域规则体检全库 fill 颜）· `prisma/seed-templates.mjs`（模板 upsert 幂等）
 
 ## 8. 提交链（origin/main 已同步）
 
