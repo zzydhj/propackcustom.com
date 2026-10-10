@@ -142,10 +142,8 @@ export function mapPdfToTemplate(
         push('warning', 'vector-paths-not-imported',
             `检测到 ${facts.vectorPathOps} 条矢量路径，但坐标未做 CTM 累加，本期不导入背景与刀版（见 HANDOFF §5-32）`);
     }
-    if (/pdf-lib/i.test(facts.producer)) {
-        push('warning', 'producer-rewritten',
-            `Producer=${facts.producer}：该文件被第三方工具重写过（非 Illustrator 直出），图层标记很可能就是这一步丢的`);
-    }
+    // 注：不再根据 Producer 判定“文件被第三方工具重写过”。实测两个 Adobe 直出文件也会被
+    // pdf-lib 的 getProducer() 报成 "pdf-lib"，那个信号根本不成立（现已改为从字节读真实值）。
 
     // ── 文字 ───────────────────────────────────────────
     const readable = facts.runs.filter((r) => !isGarbledText(r.text));

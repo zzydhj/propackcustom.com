@@ -121,7 +121,8 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 33. **pdfjs 的 cmaps/standard_fonts 路径必须从包本身解析**（`createRequire(import.meta.url).resolve('pdfjs-dist/legacy/build/pdf.mjs')` 往上三级）。拿 `import.meta.url` 拼 `../node_modules/...` 会跟着文件搬家而错：实测在 `src/lib/` 里算出 `src/node_modules/...`，CMap 加载失败 → **牙签旗.ai 从 3 条文字变 0 条，被误判成「死图不可发布」**。这类错不会报错，只会让结果默默变坏。
 34. **应库前用 `sceneToSvg` 自校场景**（导入器现在会比对 `text=` 节点数与 `slots` 数，不一致直接 block）—— 它就是模板卡片出图用的同一个函数，对不上数就是坏模板。
 35. **`ensureUniqueSlug(raw, excludeId)` 更新时必须传自己的 id**：不传会撞上自己那一行，**每重跑一次批处理 slug 就多一个 -2/-3 后缀**（实测踩过，连跑两次已验证修正后幂等）。同理去重集合要存 hash→id，不能只存 hash。
-36. **改 URL 结构后要把所有入口重查一遍**（本项目这类遗漏已出三次）：`/design` 从 `?type=` 改成路径后，页眉的 Design Studio 还链在 `/design/label`（分类走 ?type= 时代的遗留），而分类页又没有胶囊筛选条（胶囊只住在 /design），导致换分类必须先后退。现在两处共用 `src/components/design/TemplateFilterBar.tsx`（当前分类胶囊高亮 + 搜索提交到当前路径 = 分类内搜索）。另：分类页带 `q` 且 0 结果时**不能**落到“该类型无模板 → 空白编辑器”分支，否则搜索失败被伪装成分类为空。
+36. **pdf-lib 的 `doc.getProducer()` 不可信**：实测两个 Illustrator 直出文件都被它报成 `"pdf-lib (https://github.com/Hopding/pdf-lib)"`，而字节里写的是 `/Producer (Adobe PDF library 17.00)`。我基于这个错值写了一整条“客户稿被转换工具重写过”的结论，还让用户换导出方式 —— 元数据必须从原始字节读（`pdf-facts.ts` 的 `rawInfo()`）。**教训：只要一个字段会用来下结论，就得用第二种方法交叉验过。**
+37. **改 URL 结构后要把所有入口重查一遍**：`/design` 从 `?type=` 改成路径后，页眉的 Design Studio 还链在 `/design/label`（分类走 ?type= 时代的遗留），而分类页又没有胶囊筛选条（胶囊只住在 /design），导致换分类必须先后退。现在两处共用 `src/components/design/TemplateFilterBar.tsx`（当前分类胶囊高亮 + 搜索提交到当前路径 = 分类内搜索）。另：分类页带 `q` 且 0 结果时**不能**落到“该类型无模板 → 空白编辑器”分支，否则搜索失败被伪装成分类为空。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -160,7 +161,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 - ❌ **只有一个图层**：`/OCProperties/OCGs` 就一项，名叫 `图层 1`；而且内容流里 **没 BDC/EMC 标记**（`beginMarkedContent:0`）→ **所有文字/路径都归 `(no-ocg)`，无法自动分背景/文字/刀版**。
 - ❌ **无出血**：`TrimBox == BleedBox == CropBox == MediaBox` = 735.59×719.12pt = **259.5×253.69mm，bleed 算出来 0mm**。而且成品线原点就是 (0,0)。
 - ⚠️ **子集字体无 ToUnicode** → 20 条文字里 **14 条是乱码**（只剩控制码），能读的只有 “TPU with backplate / FOR STANDARD PSA SLABS / GRADED CARD” 这类英文。字体表：`XOLEYU+AcuminVariableConcept`、`GMUGUC+GoodTimesRg-Regular`、**`SJYAGE+MicrosoftYaHei-Bold`、`GMUGUC+DengXian-Bold`**（微软雅黑/等线 → 商业字体风险坐实）。
-- ⚠️ 这个文件的 `/Producer` 是 **pdf-lib**（不是 Adobe PDF library）→ **它已经被某个工具重写过**，图层被拍平、box 被拉平很可能就是这一步造成的。**不能拿它当“AI 导出应该长什么样”的基准**。
+- ⚠️ 当时我由这个文件的 `/Producer` 读出“pdf-lib”并推断“文件被第三方工具重写过”——**该推断已推翻**（字节里其实是 Adobe PDF library 17.00，错在 pdf-lib 的 getter），详见下面“四个文件横向对比”一节与 §5-36。
 
 ### 四个真实文件的横向对比（2026-10-10 补，`scripts/ai-pdf-spike.mts` 实测）
 
@@ -180,11 +181,12 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 - **`TrimBox == BleedBox == CropBox == MediaBox`，bleed 算出来永远 0mm** → 四个文件都没设出血。要么导入时统一补 3mm，要么要求导出时带 BleedBox。
 - **`pdfJs=0` 图层、`markedContentTagged=false`、`layerCount=1`** → 虽然 `/OCProperties` 里有 1–5 个图层，但**内容流里没有 BDC/EMC 标记**，所以文字/路径无法归到图层 → **自动分背景/文字/刀版目前做不到**。
 - 图层名全是 `图层 1`/`图层 3_拷贝` 这种默认名，没有命名规范。
-- `/Producer` 四个都是 **pdf-lib** → 它们都被某个工具重写过（不是 Illustrator 直出）。这很可能就是图层标记丢失的原因。**下一批文件请直接从 Illustrator 导出，不要过任何转换工具。**
+- ⚠️ **之前写在这里的「/Producer 是 pdf-lib → 文件被第三方工具重写过」是错的，已推翻**：直接拿字节查，两个文件写的都是 `/Producer (Adobe PDF library 17.00)` + `/Creator (Adobe Illustrator …)` —— **都是 Illustrator 直出**。错因是 pdf-lib 的 `doc.getProducer()` 会返回它自己的默认字符串。现在 `pdf-facts.ts` 改成从原始字节读 Producer/Creator（见 §5-36）。
+- ✅ **拿用户补交的“直出”文件重跑验证：结论不变** —— 仍然是 5 个 OCG 图层但**内容流无 BDC/EMC 标记**、`Trim=Bleed=Crop=Media`。所以**图层分不开不是转换工具造成的**，是 Illustrator 这种存法本身不把图层写进内容流标记。
 
 ### 因此 P1 的技术选择（已按四个文件修正）
 
-1. **AI/PDF 路线可以干，但“图层分离”这一环现在断在源文件上**（四个文件全部无 marked content）。现实的前置是：要么给设计师一份《图层命名与导出规范》（至少：背景 / 文字 / 刀版 三层 + 开 PDF 兼容 + **保留图层标记 + 设 BleedBox + 不要用第三方工具转一手**），要么做成“**自动抽草稿 + 人工标注台**”。文字/尺寸/路径都能自动，图层不能。
+1. **AI/PDF 路线可以干，但“图层分离”在真实文件上全部失败**（四个文件 + 用户补交的直出稿，均无 BDC/EMC 标记）。所以不要指望“让设计师换个导出方式”能解决，**方案应当是「自动抽草稿 + 人工标注台」**：尺寸/文字/坐标/字体都能自动，背景与刀版靠人在审核界面里标。给设计师的规范仍值得有（至少背景/文字/刀版 三层命名 + 设 BleedBox），但它不是图层归属的充分条件。
 2. 依赖已选定并实测：**`pdf-lib`（结构：页框/OCG 名/字体表）+ `pdfjs-dist@6.4`（内容流：文字带坐标 + 路径）**，两者 MIT/Apache。**不用 mupdf（AGPL，商业站风险）**。均为 devDependency（产品代码用到时再升为 dependencies）。
 3. 背景必须归并成图（worker 渲染），产物按 `templates/source/<yyyy>/<mm>/<sha12>-<原名>` 存 R2（桶已可用）。
 4. 字体：商业字体（雅黑/等线/方正）要么买授权子集化，要么强制回退托管字体并报警 —— 映射器已有后者。

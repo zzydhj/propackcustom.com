@@ -79,6 +79,19 @@ const textOf = (v: unknown): string | undefined => {
     return typeof raw === 'string' ? raw.replace(/^\//, '') : undefined;
 };
 
+/**
+ * /Info 里的 Producer / Creator：必须从原始字节取。
+ * 实测踩过：pdf-lib 的 doc.getProducer() 对两个 Adobe 直出文件都返回
+ * "pdf-lib (https://github.com/Hopding/pdf-lib)"，而字节里写的是 "Adobe PDF library 17.00"
+ * —— 靠它判断“文件被第三方工具重写过”会得出完全错误的结论。
+ */
+function rawInfo(bytes: Buffer, key: string): string {
+    const s = bytes.toString('latin1');
+    const m = new RegExp(`\\/${key}\\s*\\(((?:[^()\\\\]|\\\\.)*)\\)`).exec(s);
+    if (!m) return '';
+    return m[1].replace(/\\([()\\])/g, '$1');
+}
+
 /** 乱码判定：控制码区占比超 30% 就算读不到（导出给映射器复用，不另写一份规则） */
 export const isGarbledText = (s: string) => {
     const chars = [...s];
@@ -233,8 +246,9 @@ export async function readPdfFacts(file: string): Promise<PdfFacts> {
         sha12,
         sizeBytes: bytes.length,
         pdfVersion,
-        creator: doc.getCreator() ?? '',
-        producer: doc.getProducer() ?? '',
+        // rawInfo 拿不到时才退 pdf-lib 的访问器（它自报的 Producer 不可信，见上面注释）
+        creator: rawInfo(bytes, 'Creator') || doc.getCreator() || '',
+        producer: rawInfo(bytes, 'Producer') || doc.getProducer() || '',
         pageCount: doc.getPageCount(),
         rotate: (page as unknown as { rotate?: number }).rotate ?? 0,
         boxes,
