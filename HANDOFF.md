@@ -108,9 +108,16 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 25. **桶内目录必须按 `objectKey()` 的规范走**（用户明确要求不得混乱）：`uploads/{artwork,proofs}/<yyyy>/<mm>/<dd>-<rand>-<原名>`（上传类按月分片）、`exports/designs/<designId>/`、`production/orders/<orderNo>/`（产物类按实体归组）、`templates/source/<yyyy>/<mm>/<sha12>-<原名>`、`templates/preview/<slug>.<ext>`（稳定键可覆盖）、`tmp/`（建议配 7 天生命周期规则）。新增用途就改 `LAYOUT` 一处。
 26. **R2 公共域名 `file.propackcustom.com` 目前不带 CORS 头**（实测：GET 无 `access-control-allow-origin`，预检 OPTIONS 直接 403）→ **不能把 R2 直链丢进 Fabric 画布**：带 `crossOrigin` 会加载失败，不带则画布被污染，`toDataURL()`/导出直接 SecurityError。所以“大图不进 sceneJson”这个优化必须走**同源代理**（或者你在 Cloudflare 给桶加一条 CORS 规则，加完就可以直链 + 吃 CDN）。
 27. **用户报“UI 点了/悬停没反应”时，先看 dev server 终端有没有编译错误**。实测踩过：我改 SiteNav 改到一半留了个多余 `)}` → Turbopack 编译失败 → `/products` 返 500 → 浏览器拿到坏 bundle → **整页失去水合**，表现就是“所有 JS 交互都死了但页面看得到”。修好后**那个标签页仍挂着死 bundle，必须硬刷新**。判别技巧：纯 CSS 的 hover 效果还在、靠 state 的效果不动 → 就是没水合。
-28. **Mega Menu 现在全部交互零 JS**（悬停弹面板 + 左列切右列）。代价是 11 块面板都得在 DOM 里：首页 HTML raw 217KB / **gzip 25.9KB**（重复结构压得动）。要回到极小 HTML 就得重新用 React 状态，代价是“没 JS 就不切”。规则在 `globals.css` 的 `.mega-grid:has(...)` 那一段，分类超过 12 个要补 `:nth-child` 行。
-29. **在 Node 里跑 pdf.js 必须给 `cMapUrl` + `cMapPacked:true` + `standardFontDataUrl`**（指向 `node_modules/pdfjs-dist/cmaps|standard_fonts` 的绝对路径）。不给的话 CJK 子集字体直接解不出来：实测 **牙签旗.ai 从 `TEXT runs=0` 变成 3 条**（其中一条就是“黑色为刀模线”），眼镜标.ai 28 条中文全可读。v6.4 **没有** `NodeCMapReaderFactory`（不用去找它），传路径就够了。
-30. **pdf.js `constructPath` 给的是 user space 坐标，没乘 CTM** —— spike 现在报的路径包围盒不可直接当页面坐标用（牙签旗 A4 竖版 210mm 宽上出现跳 297mm 的 x）。P1 做刀版提取时必须自己累加 `transform` 算子的矩阵（或者改用 `page.getViewport()` 换算）。另外 **页面尺寸异常要拦**：一粒麦子.ai 的 TrimBox 是 2265.89×2265.89mm（≈2.27m），典型的 10:1 放大画稿，不能直接当成品尺寸入库。
+28. **Mega Menu 全部交互零 JS**（悬停弹面板 + 左列切右列 + 定高）。实现要点（踩过三次才稳定）：
+   - 面板放在**自己分类的 li 里**，绝对定位投送到右列。放右列不行：鼠标穿过列间隙时没 li 被 hover → 面板跳回第一块；li 后代关系才能保持 hover。
+   - **li 绝对不能再带 `relative`**：那样面板就以 220px 宽的 li 为基准算 `left:calc(pad+220px)` + `right:pad` → **负宽度 → 面板被压成 0 宽**，表现为“高亮在、右列整片空白”（实测踩过）。定位基准必须是 `.mega-grid`（它带 relative）。
+   - 菜单项间隙走 **li 自己的 padding**，不用 `space-y-1` 外边距 —— 外边距会造出不属于任何 li 的空域，鼠标经过时静止态闪一下（用户报的“内容跳”）。
+   - 面板定高 `min(600px, calc(100vh-104px))`；`.mega-default` 是静止态，被 `.mega-grid:has(.mega-cat:hover)` 收掉。位置用 CSS 变量 `--mega-pad/--mega-left-w/--mega-gap` 与 `container-site` 内边距同步，不手调像素。
+   - 代价：11 块面板都在 DOM 里 → 首页 HTML raw 217KB / **gzip 25.9KB**（重复结构压得动）。实测几何：面板统一 x=240/y=108/w=1050/h=536，与静止态内容起点 x=272 对齐，切换不横移。
+29. **Tailwind v4 的 `scale-*` 走独立 `scale` 属性，不是 `transform`** —— 用 `getComputedStyle(el).transform` 验证放大效果永远得到 `none`，会误判成“没生效”。要读 `computed.scale`（实测 1 → 1.04，元素 100.77px → 104.80px）。另：`NAV_CATALOG`（`src/lib/megaMenu.ts`）**没有任何 image 字段**，所以产品方块走的是字母占位分支 —— 想把 `scale` 类挂在 `<img>` 上是无效的（该分支从不渲染，这就是“放大效果丢了”的真相）。
+30. **自动化测试时：浏览器窗口不可见（`document.hidden`）就发不进真指针事件**，`hover`/`click`/`take_screenshot` 全部失败。但**纯 CSS 的几何可以量**：强制 `display:block` 后的 layout box 与真 hover 完全一致，再配合 `elementFromPoint` 做命中测试，足以验证定位与 hover 连续性。
+31. **在 Node 里跑 pdf.js 必须给 `cMapUrl` + `cMapPacked:true` + `standardFontDataUrl`**（指向 `node_modules/pdfjs-dist/cmaps|standard_fonts` 的绝对路径）。不给的话 CJK 子集字体直接解不出来：实测 **牙签旗.ai 从 `TEXT runs=0` 变成 3 条**（其中一条就是“黑色为刀模线”），眼镜标.ai 28 条中文全可读。v6.4 **没有** `NodeCMapReaderFactory`（不用去找它），传路径就够了。
+32. **pdf.js `constructPath` 给的是 user space 坐标，没乘 CTM** —— spike 现在报的路径包围盒不可直接当页面坐标用（牙签旗 A4 竖版 210mm 宽上出现跳 297mm 的 x）。P1 做刀版提取时必须自己累加 `transform` 算子的矩阵（或者改用 `page.getViewport()` 换算）。另外 **页面尺寸异常要拦**：一粒麦子.ai 的 TrimBox 是 2265.89×2265.89mm（≈2.27m），典型的 10:1 放大画稿，不能直接当成品尺寸入库。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -211,7 +218,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 - 设计器：`src/components/design/{useFabricCanvas,DesignCanvas,DesignStudio,ObjectPropertiesPanel,PreflightPanel,GuideOverlay}.tsx/ts` · `src/features/design/actions.ts` · `src/app/[locale]/design/{page,[productType]/page}.tsx` · `src/app/[locale]/account/designs/page.tsx`
 - 快速定制：`src/app/[locale]/customize/[templateSlug]/page.tsx` · `src/components/design/{GuidedStudio,GuidedWorkspace,useDesignSave}.tsx/ts` · `src/components/product/DesignPendingHint.tsx`
 - 桥接：`src/lib/design-bridge.ts`（localStorage `pp_order_design` 唯一入出口：`useDesignBridge/saveDesignBridge/clearDesignBridge`）· `src/components/ui/AttachedDesignNote.tsx`（表单上展示挂的是哪份 + don’t attach）· `src/components/product/DesignPendingHint.tsx`（/products 列表页黄条）· `src/components/quote/{ProductConfigurator,QuoteForm}.tsx` · `src/features/{order,quote}/actions.ts`（designId 落库）
-- 导航：`src/components/site/SiteNav.tsx`（悬停区模型+mega menu，**全部交互零 JS**）· `src/lib/megaMenu.ts`（NavGroup 数据）· 左列↔右列联动规则在 `src/app/globals.css` 末尾
+- 导航：`src/components/site/SiteNav.tsx`（悬停区模型+mega menu，**全部交互零 JS**；面板在各自 li 内、定位基准必须是 `.mega-grid`）· `src/lib/megaMenu.ts`（NavGroup 数据，**无 image 字段**）· 定高/静止态让位规则在 `src/app/globals.css` 末尾的 `.mega-grid` 一段
 - 后台：`src/components/admin/{TemplateEditor,PostEditor,VideoEditor,OrderReviewPanel}.tsx` · `src/features/admin/actions.ts` · `src/app/[locale]/admin/{templates,blog,videos,orders}/page.tsx`
 - 计价引擎：`src/lib/config-engine.ts` · 订单领域：`src/lib/orders.ts`
 - schema：`prisma/schema.prisma`（Order.designId L277、Quote.designId、DesignTemplate/UserDesign L~360-400、Post/Video）
