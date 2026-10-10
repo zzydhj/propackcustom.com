@@ -65,7 +65,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 
 ## 4. 数据库与迁移状态（✅ 漂移已全部收尾，2026-10-09）
 
-- 正式 migrations 共 **14 个**，`prisma migrate status` = `Database schema is up to date!`。本期新增两个收尾迁移（内容均为现网已存在的结构，用 `migrate resolve --applied` 登记，**不要**再 deploy 到现网）：
+- 正式 migrations 共 **15 个**，`prisma migrate status` = `Database schema is up to date!`。本期新增两个收尾迁移（内容均为现网已存在的结构，用 `migrate resolve --applied` 登记，**不要**再 deploy 到现网）：
   - `20261008120000_design_soft_ref_fields`：`Quote.designId` + `UserDesign.productType`（原走 db push 的两个软引用字段）。
   - `20261008130000_configurator_and_fk_catchup`：影子库校验时**额外查出的大漂移** —— 配置器三张表 `AttributeGroup`/`AttributeOption`/`DependencyRule` 当年完全没有任何迁移记录，且 `Artwork.userId`/`Order.userId`/`Order.addressId` 外键 init 里是 RESTRICT、现网已是 SET NULL，一并补齐。
 - **双向校验都已通过**：① 现网库 ↔ schema：`migrate diff --from-url <DIRECT_URL> --to-schema-datamodel` = No difference；② migrations 重放 ↔ schema：影子库 `migrate diff --from-migrations --shadow-database-url` = No difference（→ 全新库跑 `migrate deploy` 能还原出现在的结构）。以后每次改 schema 都建议跑一遍②。
@@ -75,6 +75,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 - **2026-10-09 模板库规模改造**（走正规 `migrate dev`，不是 resolve，新库 deploy 会真跑）：
   - `20261009132421_template_library_scale`：`DesignTemplate` 加 `slots`/`sourceKey`/`sourceHash`/`widthPx`/`heightPx`/`dpi`/`tags`。
   - `20261009142441_template_scale_indexes`：索引换成 `(active, productType, sort, createdAt)` + `(active, sort, createdAt)`（**排序字段必须进索引**，否则全类型翻页走 Seq Scan + Sort，实测过）。
+  - `20261010043011_template_full_bleed`：`DesignTemplate.fullBleed`（默认 false，空白框架模板不该一打开就被警告；生成的 200 个内容模板为 true）。
 
 ## 5. 环境与操作要点（踩坑记录，务必读）
 
@@ -100,7 +101,9 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 18. **报价表单的来意走 `src/lib/quote-intent.ts` 白名单**：卡片 CTA = `/quote?intent=design-help`，报价页解析后渲染顶部说明 + 预填 `notes`（QuoteForm 新增 `intent` 可选 prop）。只认白名单，用户手改的任意值不灌进表单（实测 `?intent=<script>` 无 banner 无预填）。
 19. **跑写库脚本前先停 dev server**：Neon 连接数会被跑着的 dev server 占满，脚本开新连接直接 P1001（症状：页面能开、脚本连不上）。`Get-Process node | Stop-Process -Force` → 跑脚本 → 重启 dev。冷启动 P1001 另需等 15–30s 重试。
 20. **内置浏览器视图在后台时，`ssr:false` 的页面永远不水合**（`document.hidden=true` → rAF 不触发 → React 不 hydrate），截图也全失败。设计器/引导页这类客户端页面要实测，必须先确认该视图在前台；否则只能验 SSR 页。
-21. **想在 Node 里复用应用内的 TS 纯函数**（避免脚本里另写一份规则造成偏差）：`node --experimental-strip-types scripts/x.mts` + `import ... from '../src/lib/y.ts'`；tsconfig 已开 `allowImportingTsExtensions`（靠 `noEmit` 才合法）。
+21. **想在 Node 里复用应用内的 TS 纯函数**（避免脚本里另写一份规则造成偏差）：`node --experimental-strip-types scripts/x.mts` + `import ... from '../src/lib/y.ts'`；tsconfig 已开 `allowImportingTsExtensions`（靠 `noEmit` 才合法）。生成器已改成这样跑（**必须带这个 flag**）。
+22. **从刀版 SVG 解析形状时，小圆会抢走“裁切线”的位置**：吊带的打孔圆（r=1.8mm）曾被当成刀版，导致整张所有对象都被报“超出出血”。现在只有直径 ≥ min(宽,高)×0.85 的圆才算裁切轮廓（`parseDieShape`）。
+23. **圆形对象不能用外接矩形做包含判定**：圆的外接框四角永远比圆大，一个刚好铺满出血的背景圆会被判“超出出血”→ 圆模板永久报红。`dieline.ts` 的 `DieObject` 允许对象附带真实圆，两个判定口径（引擎/脚本）共用。
 
 ## 6. 待办（按优先级，用户认可「设计器要做到值得付费」的方向）
 
@@ -119,7 +122,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 | 9 | 模板库 10 万级规模改造 | ✅ 已完成（2026-10-09）：字段 + 索引 + 查询层（分页/facet/去重 slug/内容指纹）+ 后台表格化（一行一表单→零个常驻表单）+ 前台分页搜索；20k 行实测执行计划已校正 | — |
 | 10 | 内容模板库（定位①的“有东西可逛”） | ✅ 第一批已入库：`scripts/generate-templates.mjs` 生成 **200 个**自有版权可编辑模板（版式骨架×配色×图案×字体），库内共 205；卡片预览改成服务端编译 SVG（`src/lib/scene-svg.ts`，不依赖 R2） | — |
 | 11 | 模板库发现体验补齐 | 待做：色系/风格/行业 facet（tags 已写，查询层还没按它筛）、Most Popular/Newest 排序、模板详情页（Avery 那种）、收藏/More like this | 中 |
-| 12 | 刀版三件套（印刷正确性） | 待做，比模板库更影响接单：① 模板声明裁切**形状**（现在预检用矩形包围盒，圆形贴纸“方框内≠圆内”）② 满版检查（背景没铺到出血时会出白边，现在不报）③ 生产交付包 `production.pdf`（第1页印刷层/第2页刀版层）+ SVG 的 `DIELINE` 独立图层；**刀线必须来自模板版本，不能让客户改** | 中 |
+| 12 | 刀版三件套（印刷正确性） | ✅ 已完成（2026-10-10）：① 预检按 `dielineSvg` 解析出的**真实形状**判定（圆刀按安全圆/出血圆，不再用矩形包围盒）② `fullBleed` 满版检查（没东西盖住成品线→“会露白底”）③ 生产交付：SVG 拆 `<g id="PRINT">` + 非印刷 `<g id="DIELINE">`，PDF 第 2 页 1:1 刀版层。**剩下**：异形（path 刀线）仍退化成矩形；作业单页（job ticket）未加 | 中 |
 
 ## 6A. PSD / AI 批量导入（P0 Spike 已跑完；模板库前置已做完，等真实源文件才能定 P1）
 
@@ -151,6 +154,7 @@ B2B 定制包装/印刷站（面向海外采购商，**只做英文**；next-int
 
 - 模板库（10 万级改造后）：**`src/lib/template-query.ts`**（分页/筛选/facet/深翻页上限/内容指纹/唯一 slug —— 所有列表查询只走这里）、`src/lib/template-slug.ts`（纯 slug 规则）、`src/components/ui/Pager.tsx`（前后台共用，`lang: 'en'|'zh'`）、`src/components/design/TemplateCard.tsx`（前台卡片）、`src/app/[locale]/admin/templates/page.tsx`（表格 + URL 驱动的单表单：`?q=&type=&page=&edit=&new=`）
 - 免费设计引导：`src/components/design/FreeDesignCallout.tsx`（一份文案三个密度：`banner`=/design 与 /design/[type] 顶部横条、`rail`=引导页左栏竖卡、`strip`=编辑器左工具栏紧凑条）。主 CTA = `/quote?intent=design-help`；第二入口（mailto）只在 `NEXT_PUBLIC_SALES_EMAIL` 配了真邮箱才渲染。口径：“Free with any order”，不承诺无条件免费打样。配套：`src/lib/contact.ts`、`src/lib/quote-intent.ts`
+- 印前与刀版：**`src/lib/dieline.ts`**（从 dielineSvg 解析裁切形状 + 三个判定区域 + `DieObject`；预检与生成器共用一份规则）、`src/lib/color-gamut.ts`（色域预警）、**`src/lib/production-export.ts`**（`svgWithDielineLayer` 拆 PRINT/DIELINE 两组；`appendDielinePage` 给 PDF 加第 2 页 1:1 刀版层；刀线只取自模板，不由客户带）、`src/components/design/PreflightPanel.tsx`（kind 新增 `no-full-bleed`；`index<0` 的图级问题不可点选）
 - 设计器：`src/components/design/{useFabricCanvas,DesignCanvas,DesignStudio,ObjectPropertiesPanel,PreflightPanel,GuideOverlay}.tsx/ts` · `src/features/design/actions.ts` · `src/app/[locale]/design/{page,[productType]/page}.tsx` · `src/app/[locale]/account/designs/page.tsx`
 - 快速定制：`src/app/[locale]/customize/[templateSlug]/page.tsx` · `src/components/design/{GuidedStudio,GuidedWorkspace,useDesignSave}.tsx/ts` · `src/components/product/DesignPendingHint.tsx`
 - 桥接：`src/lib/design-bridge.ts`（localStorage `pp_order_design` 唯一入出口：`useDesignBridge/saveDesignBridge/clearDesignBridge`）· `src/components/ui/AttachedDesignNote.tsx`（表单上展示挂的是哪份 + don’t attach）· `src/components/product/DesignPendingHint.tsx`（/products 列表页黄条）· `src/components/quote/{ProductConfigurator,QuoteForm}.tsx` · `src/features/{order,quote}/actions.ts`（designId 落库）
